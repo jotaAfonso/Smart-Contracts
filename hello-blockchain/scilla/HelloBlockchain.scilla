@@ -1,0 +1,78 @@
+scilla_version 0
+
+library HelloBlockchain
+
+(* Global variables *)
+let zero_address = 0x0000000000000000000000000000000000000000
+
+let fail  = Uint32 0
+let success  = Uint32 1
+
+let request_State = "REQUEST"
+let respond_State = "RESPOND"
+
+contract HelloWorld
+(
+  requestorDefaultValue: ByStr20
+)
+
+field state: String = request_State
+
+field requestMessage : String = ""
+field responseMessage : String = "" 
+ 
+field requestor : ByStr20 = requestorDefaultValue 
+field responder : ByStr20 = zero_address
+
+transition sendRequest (message : String)
+ cur_requestor <- requestor;
+ is_requestor = builtin eq cur_requestor _sender;
+  match is_requestor with
+   | False =>
+    e = {_eventname : "SendRequest"; code : fail};
+    event e
+   | True =>
+    cur_State <- state;
+    is_stateValid = builtin eq cur_State respond_State;
+     match is_stateValid with
+      | False =>
+       e = {_eventname : "SendRequest"; code : fail};
+       event e
+      | True => 
+       state := request_State; (* for similar logic *)
+       requestMessage := message;
+       e = {_eventname : "SendRequest"; code : success};
+       event e
+       (*  
+          instead of event, send could also be used
+       *)
+     end
+  end
+end
+
+transition sendResponse (message : String)
+ cur_requestor <- requestor;
+ is_requestor = builtin eq cur_requestor _sender;
+  match is_requestor with
+   | True =>
+    e = {_eventname : "SendRequest"; code : fail};
+    event e
+   | False =>
+    cur_State <- state;
+    is_stateValid = builtin eq cur_State request_State;
+     match is_stateValid with
+      | False =>
+       e = {_eventname : "SendResponse"; code : fail};
+       event e
+      | True => 
+       state := request_State; (* for similar logic *)
+       requestMessage := message;
+       responder := _sender;
+       e = {_eventname : "SendResponse"; code : success};
+       event e
+       (*  
+          instead of event, send could also be used
+       *)
+     end
+  end
+end

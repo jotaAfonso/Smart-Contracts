@@ -1,0 +1,80 @@
+contract NodeList {
+    state HasValue {
+        int id;
+        int value;
+        NodeList@Owned next;
+    }
+    state Nothing;
+
+    NodeList@Owned() {
+        ->Nothing;
+    }
+
+    transaction setValue(NodeList@Owned >> HasValue this, int theId, int numValue) {
+        HasValue::id = theId;
+        HasValue::value = numValue;
+        HasValue::next = new NodeList();
+        ->HasValue;
+    }
+
+    transaction setNext(NodeList@HasValue this, NodeList@Owned >> Unowned nextNode) {
+        this.next = nextNode;
+    }
+
+    transaction getValue(NodeList@HasValue this) returns int {
+        return value;
+    }
+
+    transaction search(int targetId) returns int {
+        switch this {
+            case HasValue {
+                if (id == targetId) {
+                    return value;
+                }
+                return next.search(targetId);
+            }
+            case Nothing {
+                revert "Node ID not found";
+            }
+        }
+    }
+}
+
+main contract DefectiveComponentCounter {
+    state Created;
+    state Compute;
+    
+    NodeList@Shared defectiveComponentsCount;
+    int counter; 
+    int total;
+
+    // recebe uma lista como constructer
+    DefectiveComponentCounter@Owned (NodeList@Shared defective, int length) {
+        this.defectiveComponentsCount = defective;  
+        this.total = 0;
+        this.counter = length; 
+        ->Created;  
+    }
+    
+    // recursao
+    transaction computeLocal(int i) returns int{
+        if(i == 0){
+            return queryNode(0);
+        } else {
+            return queryNode(i) + computeLocal(i - 1);
+        }
+    }
+
+    // stores the sum of the values of the list into total
+    // (Created | Compute) for testing purposes
+    transaction computeTotal(DefectiveComponentCounter@Created >> (Created | Compute) this) {
+        this.total = computeLocal(this.counter);   
+        ->Compute;
+    }
+
+    // returns the value in the list at the id position    
+    transaction queryNode(int id) returns int {
+        return this.defectiveComponentsCount.search(id);
+    }
+}
+

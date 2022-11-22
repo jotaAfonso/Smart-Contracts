@@ -1,0 +1,49 @@
+scilla_version 0
+
+import BoolUtils IntUtils ListUtils
+
+library BasicProvenance
+
+let success  = Uint32 1
+let fail  = Uint32 0
+
+let zero_address = 0x0000000000000000000000000000000000000000
+
+let created_State = "CREATED"
+let inTransit_State = "INTRANSIT"
+let completed_State = "COMPLETED"
+
+contract BasicProvenance
+ (
+  initiatingCounterparty: ByStr20,
+  supplyChainOwner: ByStr20,
+  supplyChainObserver: ByStr20
+)
+
+field state: String = created_State
+
+field counterparty : ByStr20 = initiatingCounterparty
+field owner : ByStr20 = supplyChainOwner
+field observer : ByStr20 = supplyChainObserver
+
+field previousCounterparty : ByStr20 = zero_address
+
+transition TransferResponsibility(newCounterparty: ByStr20)
+ cur_counterparty <- counterparty;
+ is_counterParty = builtin eq cur_counterparty _sender;
+ cur_state <- state;
+ is_inStateValid = builtin eq cur_state inTransit_State;
+ is_crStateValid = builtin eq cur_state created_State;
+ is_stateValid = orb is_inStateValid is_crStateValid;
+ is_condition = andb is_counterParty is_stateValid;
+  match is_condition with
+   | False =>
+    e = {_eventname : "TransferResponsibility"; code : fail};
+    event e
+   | True => 
+    previousCounterparty := cur_counterparty;
+    counterparty := newCounterparty;
+    e = {_eventname : "TransferResponsibility"; code : success};
+    event e
+  end
+end

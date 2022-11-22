@@ -1,0 +1,112 @@
+scilla_version 0
+
+import BoolUtils
+
+library RoomThermostat
+
+let success  = Uint32 1
+let fail  = Uint32 0
+
+let created_State = "CREATED"
+let inUse_State = "INUSE"
+
+let off_Mode = "OFF"
+let cool_Mode = "COOL"
+let heat_Mode = "HEAT"
+let auto_Mode = "AUTO"
+
+let zero = Uint32 0
+
+contract RoomThermostat
+ (
+  userAdd: ByStr20,
+  installerAdd: ByStr20,
+  targetTemp: Uint32
+)
+
+field state: String = created_State
+
+field user : ByStr20 = userAdd
+field installer : ByStr20 = installerAdd
+field targetTemperature : Uint32 = targetTemp
+
+field mode : String = ""
+
+transition StartThermostat ()
+ cur_installer <- installer;
+ is_installer = builtin eq cur_installer _sender;
+  match is_installer with
+   | False =>
+    e = {_eventname : "StartThermostat"; code : fail};
+    event e
+	| True => 
+    cur_state <- state;
+    is_state_valid = builtin eq cur_state created_State;
+    match is_state_valid with
+      | False =>
+        e = {_eventname : "StartThermostat"; code : fail};
+        event e
+      | True =>
+        state := inUse_State;
+        e = {_eventname : "StartThermostat"; code : success};
+        event e
+    end
+  end
+end
+
+transition SetTargetTemperature (temperature : Uint32)
+ cur_user <- user;
+ is_User = builtin eq cur_user _sender;
+ cur_state <- state;
+ is_StateValid = builtin eq cur_state inUse_State;
+ condition = andb is_User is_StateValid;
+  match condition with
+   | False =>
+    e = {_eventname : "SetTargetTemperature"; code : fail};
+    event e
+   | True => 
+    targetTemperature := temperature;
+    e = {_eventname : "SetTargetTemperature"; code : success};
+    event e
+  end
+end
+
+transition SetMode (modeValue : String)
+ cur_user <- user;
+ is_User = builtin eq cur_user _sender;
+ cur_state <- state;
+ is_StateValid = builtin eq cur_state inUse_State;
+ condition = andb is_User is_StateValid;
+  match condition with
+   | False =>
+   e = {_eventname : "SetMode"; code : fail};
+    event e
+   | True => 
+    mode := modeValue;
+    e = {_eventname : "SetMode"; code : success};
+    event e 
+    (* 
+    match modeValue with 
+    | off_Mode =>
+      mode := off_Mode;
+      e = {_eventname : "SetMode_off"; code : success};
+      event e
+    | cool_Mode =>
+      mode := cool_Mode;
+      e = {_eventname : "SetMode_cool"; code : success};
+      event e
+    | heat_Mode =>
+      mode := heat_Mode;
+      e = {_eventname : "SetMode_heat"; code : success};
+      event e
+    | auto_Mode =>
+      mode := auto_Mode;
+      e = {_eventname : "SetMode_auto"; code : success};
+      event e
+    | Some =>
+      e = {_eventname : "SetMode"; code : fail};
+      event e
+    end
+    *)
+  end
+end

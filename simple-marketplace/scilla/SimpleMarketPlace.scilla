@@ -1,0 +1,108 @@
+         scilla_version 0
+
+import IntUtils
+
+library SimpleMarketplace
+
+let success  = Uint32 1
+let fail  = Uint32 0
+
+let itemAvailable_State = "ITEMAVAILABLE"
+let offerPlaced_State = "OFFERPLACED"
+let accepted_State = "ACCEPTED"
+
+let zero = Uint32 0
+
+contract SimpleMarketplace
+ (
+  instanceOwner: ByStr20,
+  askingPriceValue: Uint32,
+  descriptionValue: String
+)
+
+field state: String = itemAvailable_State
+field description : String = descriptionValue
+field askingPrice : Uint32 = askingPriceValue
+field owner : ByStr20 = instanceOwner
+
+field offerPrice : Uint32 = Uint32 0
+field instanceBuyer : ByStr20 = 0x0000000000000000000000000000000000000000
+
+transition MakeOffer (offer : Uint32)
+ positive = uint32_ge offer zero;
+  match positive with
+   | False =>
+		 e = {_eventname : "makeOffer"; code : fail};
+    event e
+   | True =>
+    cur_state <- state;
+    is_stateValid = builtin eq cur_state itemAvailable_State;
+     match is_stateValid with
+      | False =>
+       e = {_eventname : "makeOffer"; code : fail};
+       event e
+      | True => 
+       cur_owner <- owner;
+       is_Owner = builtin eq cur_owner _sender;
+        match is_Owner with
+         |False =>
+          instanceBuyer := _sender;
+          offerPrice := offer;
+          state := offerPlaced_State;
+          e = {_eventname : "makeOffer"; code : success};
+          event e
+         |True=>
+          e = {_eventname : "makeOffer"; code : fail};
+          event e
+        end
+     end
+  end
+end
+
+transition Accept ()
+ cur_state <- state;
+ is_equal = builtin eq cur_state offerPlaced_State;
+  match is_equal with 
+   | False =>
+    e = {_eventname : "Accept"; code : fail};
+    event e
+   | True =>
+    cur_owner <- owner;
+    is_owner = builtin eq cur_owner _sender;
+	 match is_owner with 
+      | False =>
+        e = {_eventname : "Accept"; code : fail};
+        event e
+      | True =>
+       buyer = 0x0000000000000000000000000000000000000000;
+       instanceBuyer := buyer;
+       state := itemAvailable_State;
+       e = {_eventname : "Reject"; code : success};
+       event e
+     end
+  end
+end
+
+transition Reject ()
+ cur_state <- state;
+ is_equal = builtin eq cur_state offerPlaced_State;
+  match is_equal with 
+   | False =>
+    e = {_eventname : "Reject"; code : fail};
+    event e
+   | True =>
+    cur_owner <- owner;
+    is_owner = builtin eq cur_owner _sender;
+     match is_owner with 
+      | False =>
+        e = {_eventname : "Reject"; code : fail};
+        event e
+      | True =>
+       buyer = 0x0000000000000000000000000000000000000000;
+       instanceBuyer := buyer;
+       state := itemAvailable_State;
+       e = {_eventname : "Reject"; code : success};
+       event e
+     end
+  end
+end

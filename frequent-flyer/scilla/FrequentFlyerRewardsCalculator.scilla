@@ -1,0 +1,71 @@
+scilla_version 0
+
+import BoolUtils IntUtils ListUtils
+
+library FrequentFlyerRewardsCalculator
+
+let success  = Uint32 1
+let fail  = Uint32 0
+
+let milesValuesLength = Uint32 10
+
+let setflyeranreward_State = "SETFLYERANDREWARD"
+let milesAdded_State = "MILESADDED"
+
+let zero = Uint32 0
+
+contract FrequentFlyerRewardsCalculator
+ (
+  airline: ByStr20,
+  flyerPlane: ByStr20,
+  rewardsPerMileValue: Uint32
+)
+
+field state: String = setflyeranreward_State
+
+field rewardsPerMile : Uint32 = rewardsPerMileValue
+field flyer : ByStr20 = flyerPlane
+field airlineRepresentative : ByStr20 = airline
+
+field miles: List Uint32 = Nil {(Uint32)}
+field indexCalculatedUpto : Uint32 = Uint32 0
+(* Couldn't resolve the identifier *)
+field totalRewards : Uint32 = Uint32 0
+(* Couldn't resolve the identifier *)
+field milesCounter : Uint32 = Uint32 0
+
+procedure  ComputeTotalRewards(milesValue: Uint32)
+ totalRewards_v <- totalRewards;
+ localvalue = builtin add totalRewards_v milesValue;
+ totalRewards := localvalue;
+ e = {_eventname : "ComputeTotalRewards"; code : success};
+ event e
+end
+
+transition AddMiles (milesValues: List Uint32)
+ cur_flyer <- flyer;
+ is_flyer = builtin eq cur_flyer _sender;
+  match is_flyer with
+   | False =>
+    e = {_eventname : "AddMiles"; code : fail};
+    event e
+   | True => 
+    milesCounter_v <- milesCounter; 
+    (* milesValuesLength = list_length milesValues; *)
+    sum_local = builtin add milesCounter_v milesValuesLength;
+    (* milesLength = list_length miles; *)
+    is_Valid = uint32_le sum_local milesValuesLength;
+     match is_Valid with
+      | False =>
+       e = {_eventname : "AddMiles"; code : fail};
+       event e
+      | True =>
+	   miles := milesValues;
+     cur_miles <- miles;
+	   forall cur_miles ComputeTotalRewards;
+       state := milesAdded_State;
+       e = {_eventname : "AddMiles"; code : success};
+       event e
+     end
+  end
+end

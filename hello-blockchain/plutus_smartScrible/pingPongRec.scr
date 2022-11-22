@@ -1,0 +1,13 @@
+protocol PingPongRec (role Client){
+  // this protocol does not end as it stays in the Loop indefinitely
+  initialise() from Client;
+
+  rec Loop {
+    ping() from Client;
+
+    pong() from Client;
+
+    Loop;
+  }
+  
+}
