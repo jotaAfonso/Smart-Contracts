@@ -16,4 +16,5 @@ https://github.com/Azure-Samples/blockchain/tree/master/blockchain-workbench/app
 | move      |  _(o)            |  _(o)  | _(o)           | x(o)             | _(o)            | _(o)               |
 
 (*) - language specific situation
+
 (o) - on going
