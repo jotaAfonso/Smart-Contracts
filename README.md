@@ -9,9 +9,9 @@ https://github.com/Azure-Samples/blockchain/tree/master/blockchain-workbench/app
 
 | Languages | basic-provenance | bazaar | frequent-flyer | hello-blockchain | room-thermostat | simple-marketplace |
 | :------:  | :----:           | :----: | :----:         | :----:           | :----:          | :----:             |
-| obsidian  |  _               |  x(*)  | x              | x                | x               | _                  | 
+| obsidian  |  x               |  x(*)  | x              | x                | x               | x                  | 
 | plutus    |  x               |  x(*)  | _(*)           | x                | x               | x                  |
-| scilla    |  _               |  _     | x              | x                | x               | _                  |
+| scilla    |  x               |  _     | x              | x                | x               | x                  |
 | vyper     |  x               |  x     | x              | x                | x               | x                  |
 | move      |  _(o)            |  _(o)  | _(o)           | x(o)             | _(o)            | _(o)               |
 
