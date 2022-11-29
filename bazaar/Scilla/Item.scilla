@@ -1,0 +1,90 @@
+scilla_version 0
+
+import BoolUtils IntUtils ListUtils
+
+library Item
+
+let success  = Uint128 1
+let fail  = Uint128 0
+
+let bazaar_address = 0x0000000000000000000000000000000000000000
+
+let one_msg = 
+  fun (msg : Message) => 
+    let nil_msg = Nil {Message} in
+    Cons {Message} msg nil_msg
+
+let two_msgs =
+  fun (msg1 : Message) =>
+  fun (msg2 : Message) =>
+    let msgs_tmp = one_msg msg2 in
+    Cons {Message} msg1 msgs_tmp
+
+contract Item
+()
+
+(* just for a logic example, replaceable for balance in accounts *)
+field name : String = ""
+field price : Uint128 = Uint128 0
+field itemCreated : Bool  = False
+field sellerAddress : ByStr20 = bazaar_address
+
+transition setItem(itemPrice: Uint128, itemName: String)
+  cur_itemCreated <- itemCreated;
+  match cur_itemCreated with
+   | True =>
+    e = {_eventname : "setItem"; code : fail };
+    event e
+   | False =>
+    is_Valid = uint128_gt itemPrice fail;
+     match is_Valid with
+      | True =>
+        price := itemPrice;
+        name := itemName;
+        localitemCreated = True;
+        itemCreated := localitemCreated;
+        sellerAddress := _sender;
+        e = {_eventname : "setItem"; code : success };
+        event e
+      | False =>
+       e = {_eventname : "setItem"; code : fail };
+       event e
+     end
+  end
+end
+
+
+transition buyItem()
+ cur_seller <- sellerAddress;
+ is_seller = builtin eq cur_seller _sender;
+  match is_seller with
+   | True =>
+    e = {_eventname : "buyItem"; code : fail };
+    event e
+   | False =>
+    cur_itemCreated <- itemCreated;
+    match cur_itemCreated with
+     | False =>
+       e = {_eventname : "buyItem"; code : fail };
+       event e
+     | True =>
+      cur_price <- price;
+      is_AmountValid = uint128_eq _amount cur_price;
+      match is_AmountValid with
+       | False =>
+        e = {_eventname : "buyItem"; code : fail };
+        event e
+       | True =>
+        accept;
+        item_price <- price;
+        isSeller = False; 
+        itemCreated := isSeller;
+        msg2 = { _tag : "updateBalance"; _recipient : bazaar_address; _amount : Uint128 0; priceValue : item_price; isSeller : isSeller };
+        isSeller = True; 
+        msg1 = { _tag : "updateBalance"; _recipient : bazaar_address; _amount : item_price; priceValue : item_price; isSeller : isSeller };
+        msgs = two_msgs msg1 msg2;
+        send msgs
+      end
+    end
+  end
+end

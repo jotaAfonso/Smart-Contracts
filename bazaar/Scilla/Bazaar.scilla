@@ -1,0 +1,59 @@
+scilla_version 0
+
+import BoolUtils IntUtils ListUtils
+
+library Bazaar
+
+let success  = Uint32 1
+let fail  = Uint32 0
+
+let one_msg = 
+  fun (msg : Message) => 
+    let nil_msg = Nil {Message} in
+    Cons {Message} msg nil_msg
+
+contract Bazaar
+ (
+  sellerInit: ByStr20,
+  buyerInit: ByStr20,
+  initialBalanceSeller: Uint128,
+  initialBalanceBuyer: Uint128  
+)
+
+field balanceSeller : Uint128  = initialBalanceSeller
+field balanceBuyer : Uint128   = initialBalanceBuyer
+
+transition createItem(itemContractAddress: ByStr20, itemPriceParam: Uint128 , itemNameParam: String)
+  is_seller = builtin eq sellerInit _sender;
+    match is_seller with
+      | True =>
+        msg = { _tag : "setItem"; _recipient : itemContractAddress; _amount : Uint128 0; itemPrice : itemPriceParam; itemName : itemNameParam; itemSeller : sellerInit };
+        msgs = one_msg msg;
+        send msgs
+      | False =>
+        e = {_eventname : "createItem"; code : fail };
+        event e
+    end
+end
+
+
+transition updateBalance(priceValue: Uint128 , isSeller: Bool)
+  match isSeller with
+    | True =>
+      cur_balanceSeller <- balanceSeller;
+      local = builtin add cur_balanceSeller priceValue;
+      balanceSeller := local; 
+      e = {_eventname : "updateBalance"; code : success };
+      event e;
+      accept;
+      msg = { _tag : ""; _recipient : sellerInit; _amount : priceValue };
+      msgs = one_msg msg;
+      send msgs
+    | False =>
+      cur_balanceBuyer <- balanceBuyer;
+      local = builtin sub cur_balanceBuyer priceValue;
+      balanceBuyer := local; 
+      e = {_eventname : "updateBalance"; code : success };
+      event e
+  end
+end
