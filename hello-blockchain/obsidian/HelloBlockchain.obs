@@ -9,7 +9,7 @@ main contract HelloBlockchain {
         ->Request;  
     }
 
-    transaction sendRequest(HelloBlockchain@Request >> Respond this, string msg) {
+    transaction sendResponse(HelloBlockchain@Request >> Respond this, string msg) {
         this.message = msg;
         ->Respond;
     }
