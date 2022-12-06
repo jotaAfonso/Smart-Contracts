@@ -1,0 +1,118 @@
+scilla_version 0
+
+(***************************************************)
+(*               Associated library                *)
+(***************************************************)
+
+import BoolUtils IntUtils
+
+library Auction
+
+let one_msg = 
+  fun (msg : Message) => 
+    let nil_msg = Nil {Message} in
+    Cons {Message} msg nil_msg
+
+let start_State = "Started"
+let bid_State = "Bidding"
+let sold_State = "Sold"
+let not_sold_State = "NotSold"    
+
+let fail  = Uint128 0
+let success  = Uint128 1
+
+(***************************************************)
+(*             The contract definition             *)
+(***************************************************)
+
+contract Auction
+(
+ seller        : ByStr20,
+ buyerFirst    : ByStr20,
+ buyerSecond   : ByStr20,
+ balanceFirst  : Uint128,
+ balanceSecond : Uint128,
+ minimumPrice  : Uint128,
+ targetPrice   : Uint128,
+ emptyList     : List Uint128
+)
+
+field state : String = start_State
+
+field balanceBuyer_1 : Uint128 = balanceFirst
+field balanceBuyer_2 : Uint128 = balanceSecond
+
+field currentBid     : Uint128 = Uint128 0
+field currentBidder  : ByStr20 = seller
+
+procedure BidBuyer (ignoreParam: Uint128)
+  cur_bidder <- currentBidder;
+  first_buyer = builtin eq cur_bidder buyerFirst;
+  match first_buyer with
+   |False => 
+    cur_bid <- currentBid;
+    valid_balance = uint128_gt balanceSecond cur_bid;
+    match valid_balance with
+     |False =>
+       e = {_eventname : "bid"; code : fail};
+       event e
+     |True =>
+       is_targetP = builtin eq cur_bid targetPrice;
+       match is_targetP with
+        | True => 
+          e = {_eventname : "bid"; code : fail};
+          event e
+        | False =>
+         local = builtin add cur_bid success;
+         currentBid := local;
+         currentBidder := buyerSecond;
+         state := bid_State;
+         e = {_eventname : "bid"; code : success};
+         event e
+       end 
+    end
+   |True=>
+    cur_bid <- currentBid;
+    valid_balance = uint128_gt balanceFirst cur_bid;
+    match valid_balance with
+     |False =>
+       e = {_eventname : "bid"; code : fail};
+       event e
+     |True =>
+       is_targetP = builtin eq cur_bid targetPrice;
+       match is_targetP with
+        | True => 
+          e = {_eventname : "bid"; code : fail};
+          event e
+        | False =>
+         local = builtin add cur_bid success;
+         currentBid := local;
+         currentBidder := buyerFirst;
+         state := bid_State
+       end
+    end
+  end
+end
+
+
+transition runAuction ()
+  cur_state <- state;
+  valid_State = builtin eq cur_state start_State;
+  match valid_State with
+  | False =>
+    e = {_eventname : "runAuction"; code : fail};
+    event e
+  | True =>
+    forall emptyList BidBuyer;
+    cur_bid <- currentBid;
+    valid_finalBid = uint128_ge cur_bid minimumPrice;
+    match valid_finalBid with
+     | False =>
+       e = {_eventname : "runAuction"; code : fail};
+       event e
+     | True =>
+       e = {_eventname : "runAuction"; code : fail};
+       event e
+    end
+  end
+end 

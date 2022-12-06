@@ -1,0 +1,109 @@
+//English Auction
+
+contract Bidder {
+    int balance;
+
+    state Won;
+    state Bidding;
+
+    Bidder@Owned(int m) {
+        balance = m;
+        -> Bidding;
+    }
+
+    transaction getBalance(Bidder@Owned this) returns int {
+        return balance;
+    }
+
+    transaction won(Bidder@Owned >> Won this) {
+        -> Won;
+    }
+}
+
+contract Seller {
+    state Sold;
+    state Unsold;
+
+    Seller@Owned() {
+        -> Unsold;
+    }
+
+    transaction sold(Seller@Owned >> Sold this) {
+        -> Sold();
+    }
+
+}
+
+main contract Auction {
+
+    Bidder@Owned partyA;
+    Bidder@Owned partyB;
+    Seller@Owned seller;
+
+    state Started;
+    state Bidding;
+    state Sold;
+    state NotSold;
+
+    int minimumPrice;
+    int targetPrice;
+
+    int currentBid;
+    int currentBidder;
+
+    Auction@Owned(int min, int target) {
+        partyA = new Bidder(10);
+        partyB = new Bidder(10);
+        seller = new Seller();
+        minimumPrice = min;
+        targetPrice = target;
+        currentBid = 0;
+        currentBidder = 2;
+        -> Started;
+    }
+
+    transaction runAuction(Auction@Started >> (Sold | NotSold) this) {
+        bool result;        
+        
+        if (currentBidder == 2) {
+            result = makeBid(partyA);
+            if (result) {
+                currentBid = currentBid + 1;
+                currentBidder = 1;
+            }
+        }
+        if (currentBidder == 1) {
+            result = makeBid(partyB);
+            if (result) {
+                currentBid = currentBid + 1;
+                currentBidder = 2;
+            }
+        }
+        if (result){
+            runAuction();            
+        }
+
+        if (currentBid < minimumPrice){
+            currentBid = 0;
+            ->NotSold;        
+        }
+        else {
+            this.seller.sold();
+            if (currentBidder == 1){
+                this.partyA.won();            
+            }else{
+                this.partyA.won();
+            }                
+            ->Sold;        
+        }
+    }
+
+    transaction makeBid(Bidder@Owned bidder) returns bool {
+        if ( bidder.getBalance() <= currentBid ) {
+            return false;
+        }
+        else {
+            return true;
+        } 
+    }
+}

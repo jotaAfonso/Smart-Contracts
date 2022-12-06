@@ -1,0 +1,41 @@
+protocol Auction (role Buyer, role Seller) {
+
+    field minPrice:Integer, targetPrice:Integer, balanceA:Integer, balanceB:Integer, currentBid:Integer;
+
+    Initialise(mPrice:Integer, tPrice:Integer, bA:Integer, bB:Integer, cBid:Integer) from Seller[|
+        returnOutputOk $ setMinPrice mPrice
+                       $ setTargetPrice tPrice
+                       $ setBalanceA bA
+                       $ setBalanceB bB
+                       $ setCurrentBid cBid
+                       $ setStateVal stateVal output
+    |];
+    
+    RunAuction(offerPriceValue:Integer) from Seller[|      
+        else returnOutputOk $ setOfferPrice offerPriceValue 
+                            $ setStateVal stateVal output
+
+    |];
+
+    rec Loop {
+        choice at Seller {
+            bid: {
+                Bidding() from Seller[|
+                    returnOutputOk $ setStateVal stateVal output
+
+                |];
+                Loop;
+            }
+            stopBidding : {
+            }
+        }
+    }
+    
+    Sell() from Seller[|
+        returnOk
+    |];
+    
+    NotSell() from Seller[|
+        returnOk        
+    |];
+}
