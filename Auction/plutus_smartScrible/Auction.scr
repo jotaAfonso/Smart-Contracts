@@ -1,41 +1,38 @@
-protocol Auction (role Buyer, role Seller) {
+protocol Auction (signed role Seller, role Buyer) {
+   field currBid:Value,lastBidder:PubKeyHash,asset:Integer;
 
-    field minPrice:Integer, targetPrice:Integer, balanceA:Integer, balanceB:Integer, currentBid:Integer;
-
-    Initialise(mPrice:Integer, tPrice:Integer, bA:Integer, bB:Integer, cBid:Integer) from Seller[|
-        returnOutputOk $ setMinPrice mPrice
-                       $ setTargetPrice tPrice
-                       $ setBalanceA bA
-                       $ setBalanceB bB
-                       $ setCurrentBid cBid
-                       $ setStateVal stateVal output
-    |];
-    
-    RunAuction(offerPriceValue:Integer) from Seller[|      
-        else returnOutputOk $ setOfferPrice offerPriceValue 
-                            $ setStateVal stateVal output
-
+    initialise (initBid:Value, assetToSell:Integer) from Seller[|
+        returnOutputOk $ setCurrBid initBid
+                       $ setLastBidder noKey
+                       $ setAsset assetToSell output
     |];
 
-    rec Loop {
-        choice at Seller {
-            bid: {
-                Bidding() from Seller[|
-                    returnOutputOk $ setStateVal stateVal output
-
-                |];
-                Loop;
-            }
-            stopBidding : {
-            }
+  rec Loop {
+    choice at Seller {      
+        continueAuction [|returnOk|]: {   
+            bid (newBid:Value) from Buyer[|
+                pkh <- ownPaymentPubKeyHash
+                if (newBid `V.gt`mempty) && (newBid `V.gt`currBid)
+                then returnOutputOk $ if (lastBidder == noKey)
+                    then setCurrBid newBid
+                         $ setLastBidder pkh
+                         $ setStateVal newBid output
+                    else setCurrBid newBid
+                         $ setLastBidder pkh
+                         $ setStateVal newBid 
+                         $ setConstraint (Constraints.mustPayToPubKey lastBidder currBid) output
+                else returnError "Invalid Bid!"
+             |];
+             Loop;
+        }
+        closeAuction [|returnOk|]: {  
+            collectFundsAndGiveRewards () from Seller[|
+                returnOutputOk $ setConstraint (Constraints.mustPayToPubKey (head sellerId) currBid)
+                               $ setStateVal mempty output
+            |];
         }
     }
-    
-    Sell() from Seller[|
-        returnOk
-    |];
-    
-    NotSell() from Seller[|
-        returnOk        
-    |];
-}
+  }
+  
+   checkWinner () from Seller;      
+} 

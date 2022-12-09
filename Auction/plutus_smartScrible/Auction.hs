@@ -32,24 +32,22 @@ import           Prelude                              (String, undefined, show)
 
 -- | Declaration of the possible states for the State Machine:
 data AuctionState =
-    None [(Integer,(POSIXTime,Slot))]
-    | InitialiseState Integer Integer Integer Integer Integer [(Integer,(POSIXTime,Slot))]
-    | RunAuctionState Integer Integer Integer Integer Integer [(Integer,(POSIXTime,Slot))]
-    | BidState Integer Integer Integer Integer Integer [(Integer,(POSIXTime,Slot))]
-    | StopBiddingState Integer Integer Integer Integer Integer [(Integer,(POSIXTime,Slot))]
-    | SellState Integer Integer Integer Integer Integer [(Integer,(POSIXTime,Slot))]
-    | NotSellState Integer Integer Integer Integer Integer [(Integer,(POSIXTime,Slot))]
+    None [PaymentPubKeyHash] [(Integer,(POSIXTime,Slot))]
+    | InitialiseState Value PaymentPubKeyHash Integer [PaymentPubKeyHash] [(Integer,(POSIXTime,Slot))]
+    | CloseAuctionState Value PaymentPubKeyHash Integer [PaymentPubKeyHash] [(Integer,(POSIXTime,Slot))]
+    | CollectFundsAndGiveRewardsState Value PaymentPubKeyHash Integer [PaymentPubKeyHash] [(Integer,(POSIXTime,Slot))]
+    | ContinueAuctionState Value PaymentPubKeyHash Integer [PaymentPubKeyHash] [(Integer,(POSIXTime,Slot))]
+    | CheckWinnerState Value PaymentPubKeyHash Integer [PaymentPubKeyHash] [(Integer,(POSIXTime,Slot))]
     deriving stock (Show, Generic)
 
 -- | Declaration of the inputs that will be used for the transitions of the State Machine
 data AuctionInput =
-    InitialiseInput Integer Integer Integer Integer Integer [(Integer,(POSIXTime,Slot))] Value
-    | RunAuctionInput Integer Integer Integer Integer Integer [(Integer,(POSIXTime,Slot))] Value
-    | BidInput Integer Integer Integer Integer Integer [(Integer,(POSIXTime,Slot))] Value
-    | BiddingInput Integer Integer Integer Integer Integer [(Integer,(POSIXTime,Slot))] Value
-    | StopBiddingInput Integer Integer Integer Integer Integer [(Integer,(POSIXTime,Slot))] Value
-    | SellInput Integer Integer Integer Integer Integer [(Integer,(POSIXTime,Slot))] Value
-    | NotSellInput Integer Integer Integer Integer Integer [(Integer,(POSIXTime,Slot))] Value
+    InitialiseInput Value PaymentPubKeyHash Integer [PaymentPubKeyHash] [(Integer,(POSIXTime,Slot))] Value
+    | CloseAuctionInput Value PaymentPubKeyHash Integer [PaymentPubKeyHash] [(Integer,(POSIXTime,Slot))] Value
+    | CollectFundsAndGiveRewardsInput Value PaymentPubKeyHash Integer [PaymentPubKeyHash] [(Integer,(POSIXTime,Slot))] Value
+    | ContinueAuctionInput Value PaymentPubKeyHash Integer [PaymentPubKeyHash] [(Integer,(POSIXTime,Slot))] Value
+    | BidInput Value PaymentPubKeyHash Integer [PaymentPubKeyHash] [(Integer,(POSIXTime,Slot))] Value
+    | CheckWinnerInput Value PaymentPubKeyHash Integer [PaymentPubKeyHash] [(Integer,(POSIXTime,Slot))] Value
     deriving stock (Show, Generic)
 
 -- | Make the types possible to use in the "on chain" part of Plutus (State Machine)
@@ -75,27 +73,23 @@ mapContractError' = mapError $ T.pack . show
 
 -- | Contract schema: Endpoint and the parameters they receive
 type AuctionSchema =
-        Endpoint "bid" ()
-        .\/ Endpoint "bidding" ()
+        Endpoint "bid" BidParams
+        .\/ Endpoint "checkwinner" ()
+        .\/ Endpoint "closeauction" ()
+        .\/ Endpoint "collectfundsandgiverewards" ()
+        .\/ Endpoint "continueauction" ()
         .\/ Endpoint "initialise" InitialiseParams
-        .\/ Endpoint "notsell" ()
-        .\/ Endpoint "runauction" RunAuctionParams
-        .\/ Endpoint "sell" ()
-        .\/ Endpoint "stopbidding" ()
 
 
-data InitialiseParams = InitialiseParams {
-  mPrice :: Integer,
-  tPrice :: Integer,
-  bA :: Integer,
-  bB :: Integer,
-  cBid :: Integer
+data BidParams = BidParams {
+  newBid :: Value
   } 
   deriving stock (Prelude.Eq, Show, Generic)
   deriving anyclass (FromJSON, ToJSON, ToSchema, ToArgument)
 
-data RunAuctionParams = RunAuctionParams {
-  offerPriceValue :: Integer
+data InitialiseParams = InitialiseParams {
+  initBid :: Value,
+  assetToSell :: Integer
   } 
   deriving stock (Prelude.Eq, Show, Generic)
   deriving anyclass (FromJSON, ToJSON, ToSchema, ToArgument)
@@ -113,26 +107,24 @@ validateKeys keys = if null keys
 {-# INLINABLE transition #-}
 transition :: State AuctionState -> AuctionInput -> Maybe (TxConstraints Void Void, State AuctionState)
 transition State{stateData=oldData,stateValue} input = case (oldData, input) of
-    (None _, InitialiseInput minPrice targetPrice balanceA balanceB currentBid triggerTimeStamps stateVal) -> Just(mempty, State{stateData = InitialiseState minPrice targetPrice balanceA balanceB currentBid triggerTimeStamps, stateValue = stateVal})
-    (BidState _ _ _ _ _ _, BiddingInput minPrice targetPrice balanceA balanceB currentBid triggerTimeStamps stateVal) -> Just(mempty, State{stateData = RunAuctionState minPrice targetPrice balanceA balanceB currentBid triggerTimeStamps, stateValue = stateVal})
-    (InitialiseState _ _ _ _ _ _, RunAuctionInput minPrice targetPrice balanceA balanceB currentBid triggerTimeStamps stateVal) -> Just(mempty, State{stateData = RunAuctionState minPrice targetPrice balanceA balanceB currentBid triggerTimeStamps, stateValue = stateVal})
-    (RunAuctionState _ _ _ _ _ _, StopBiddingInput minPrice targetPrice balanceA balanceB currentBid triggerTimeStamps stateVal) -> Just(mempty, State{stateData = StopBiddingState minPrice targetPrice balanceA balanceB currentBid triggerTimeStamps, stateValue = stateVal})
-    (RunAuctionState _ _ _ _ _ _, BidInput minPrice targetPrice balanceA balanceB currentBid triggerTimeStamps stateVal) -> Just(mempty, State{stateData = BidState minPrice targetPrice balanceA balanceB currentBid triggerTimeStamps, stateValue = stateVal})
-    (StopBiddingState _ _ _ _ _ _, SellInput minPrice targetPrice balanceA balanceB currentBid triggerTimeStamps stateVal) -> Just(mempty, State{stateData = SellState minPrice targetPrice balanceA balanceB currentBid triggerTimeStamps, stateValue = stateVal})
-    (SellState _ _ _ _ _ _, NotSellInput minPrice targetPrice balanceA balanceB currentBid triggerTimeStamps stateVal) -> Just(mempty, State{stateData = NotSellState minPrice targetPrice balanceA balanceB currentBid triggerTimeStamps, stateValue = mempty})
+    (None _ _, InitialiseInput currBid lastBidder asset sellerId triggerTimeStamps stateVal) -> Just(mempty, State{stateData = InitialiseState currBid lastBidder asset sellerId triggerTimeStamps, stateValue = stateVal})
+    (CloseAuctionState _ _ _ _ _, CollectFundsAndGiveRewardsInput currBid lastBidder asset sellerId triggerTimeStamps stateVal) -> Just(mempty, State{stateData = CollectFundsAndGiveRewardsState currBid lastBidder asset sellerId triggerTimeStamps, stateValue = stateVal})
+    (ContinueAuctionState _ _ _ _ _, BidInput currBid lastBidder asset sellerId triggerTimeStamps stateVal) -> Just(mempty, State{stateData = InitialiseState currBid lastBidder asset sellerId triggerTimeStamps, stateValue = stateVal})
+    (InitialiseState _ _ _ _ _, ContinueAuctionInput currBid lastBidder asset sellerId triggerTimeStamps stateVal) -> Just(mempty, State{stateData = ContinueAuctionState currBid lastBidder asset sellerId triggerTimeStamps, stateValue = stateVal})
+    (InitialiseState _ _ _ _ _, CloseAuctionInput currBid lastBidder asset sellerId triggerTimeStamps stateVal) -> Just(mempty, State{stateData = CloseAuctionState currBid lastBidder asset sellerId triggerTimeStamps, stateValue = stateVal})
+    (CollectFundsAndGiveRewardsState _ _ _ _ _, CheckWinnerInput currBid lastBidder asset sellerId triggerTimeStamps stateVal) -> Just(mempty, State{stateData = CheckWinnerState currBid lastBidder asset sellerId triggerTimeStamps, stateValue = mempty})
     
     _ -> Nothing
 
 {-# INLINABLE transitionCheck #-}
 transitionCheck :: AuctionState -> AuctionInput -> ScriptContext -> Bool
 transitionCheck state input context = case (state, input) of
-    (None triggerTimeStamps, InitialiseInput _ _ _ _ _ _ _) -> True
-    (BidState minPrice targetPrice balanceA balanceB currentBid triggerTimeStamps, BiddingInput _ _ _ _ _ _ _) -> True
-    (InitialiseState minPrice targetPrice balanceA balanceB currentBid triggerTimeStamps, RunAuctionInput _ _ _ _ _ _ _) -> True
-    (RunAuctionState minPrice targetPrice balanceA balanceB currentBid triggerTimeStamps, StopBiddingInput _ _ _ _ _ _ _) -> True
-    (RunAuctionState minPrice targetPrice balanceA balanceB currentBid triggerTimeStamps, BidInput _ _ _ _ _ _ _) -> True
-    (StopBiddingState minPrice targetPrice balanceA balanceB currentBid triggerTimeStamps, SellInput _ _ _ _ _ _ _) -> True
-    (SellState minPrice targetPrice balanceA balanceB currentBid triggerTimeStamps, NotSellInput _ _ _ _ _ _ _) -> True
+    (None sellerId triggerTimeStamps, InitialiseInput _ _ _ _ _ _) -> checkKeys sellerId
+    (CloseAuctionState currBid lastBidder asset sellerId triggerTimeStamps, CollectFundsAndGiveRewardsInput _ _ _ _ _ _) -> checkKeys sellerId
+    (ContinueAuctionState currBid lastBidder asset sellerId triggerTimeStamps, BidInput _ _ _ _ _ _) -> True
+    (InitialiseState currBid lastBidder asset sellerId triggerTimeStamps, ContinueAuctionInput _ _ _ _ _ _) -> checkKeys sellerId
+    (InitialiseState currBid lastBidder asset sellerId triggerTimeStamps, CloseAuctionInput _ _ _ _ _ _) -> checkKeys sellerId
+    (CollectFundsAndGiveRewardsState currBid lastBidder asset sellerId triggerTimeStamps, CheckWinnerInput _ _ _ _ _ _) -> checkKeys sellerId
     
     _ -> False
     where
@@ -147,7 +139,7 @@ machine = SM.StateMachine
         , SM.smThreadToken = Nothing
         }
     where
-        isFinal (NotSellState _ _ _ _ _ _) = True
+        isFinal (CheckWinnerState _ _ _ _ _) = True
         isFinal _       = False
 
 {-# INLINABLE mkValidator #-} 
@@ -184,7 +176,8 @@ initialiseSM = do
     case currentState of
         Nothing -> do
           let triggerTimeStamps = []
-          SM.runInitialise client (None  triggerTimeStamps) mempty
+              sellerId = [stringToKey "abcdef", stringToKey "012345", stringToKey "6789ab"]
+          SM.runInitialise client (None sellerId triggerTimeStamps) mempty
           pure Nothing
         x -> pure x
 
@@ -200,17 +193,16 @@ isValidCallInState Nothing input = canInitialiseSM input
 isValidCallInState (Just state) input = validTransitions state input
 
 canInitialiseSM :: AuctionInput -> Bool
-canInitialiseSM (InitialiseInput _ _ _ _ _ _ _) = True
+canInitialiseSM (InitialiseInput _ _ _ _ _ _) = True
 canInitialiseSM _ = False
 
 validTransitions :: AuctionState -> AuctionInput -> Bool
-validTransitions (SellState _ _ _ _ _ _) (NotSellInput _ _ _ _ _ _ _) = True
-validTransitions (StopBiddingState _ _ _ _ _ _) (SellInput _ _ _ _ _ _ _) = True
-validTransitions (RunAuctionState _ _ _ _ _ _) (StopBiddingInput _ _ _ _ _ _ _) = True
-validTransitions (BidState _ _ _ _ _ _) (BiddingInput _ _ _ _ _ _ _) = True
-validTransitions (RunAuctionState _ _ _ _ _ _) (BidInput _ _ _ _ _ _ _) = True
-validTransitions (InitialiseState _ _ _ _ _ _) (RunAuctionInput _ _ _ _ _ _ _) = True
-validTransitions (None _) (InitialiseInput _ _ _ _ _ _ _) = True
+validTransitions (CollectFundsAndGiveRewardsState _ _ _ _ _) (CheckWinnerInput _ _ _ _ _ _) = True
+validTransitions (ContinueAuctionState _ _ _ _ _) (BidInput _ _ _ _ _ _) = True
+validTransitions (InitialiseState _ _ _ _ _) (ContinueAuctionInput _ _ _ _ _ _) = True
+validTransitions (CloseAuctionState _ _ _ _ _) (CollectFundsAndGiveRewardsInput _ _ _ _ _ _) = True
+validTransitions (InitialiseState _ _ _ _ _) (CloseAuctionInput _ _ _ _ _ _) = True
+validTransitions (None _ _) (InitialiseInput _ _ _ _ _ _) = True
 validTransitions _ _ = False
 
 
@@ -241,44 +233,42 @@ zeroLovelace = Ada.lovelaceValueOf 0
 noKey :: PaymentPubKeyHash
 noKey = stringToKey "00000000000000000000000000000000000000000000000000000000"
 
-getContractInfo :: Contract () AuctionSchema T.Text ([(Integer,(POSIXTime,Slot))])
+getContractInfo :: Contract () AuctionSchema T.Text ([PaymentPubKeyHash], [(Integer,(POSIXTime,Slot))])
 getContractInfo = do
     currState <- mapSMError' $ getCurrentStateSM client
     case currState of
-        Just (InitialiseState _ _ _ _ _ triggerTimeStamps) -> pure $ (triggerTimeStamps)
-        Just (RunAuctionState _ _ _ _ _ triggerTimeStamps) -> pure $ (triggerTimeStamps)
-        Just (BidState _ _ _ _ _ triggerTimeStamps) -> pure $ (triggerTimeStamps)
-        Just (StopBiddingState _ _ _ _ _ triggerTimeStamps) -> pure $ (triggerTimeStamps)
-        Just (SellState _ _ _ _ _ triggerTimeStamps) -> pure $ (triggerTimeStamps)
-        Just (NotSellState _ _ _ _ _ triggerTimeStamps) -> pure $ (triggerTimeStamps)
-        Just (None triggerTimeStamps) -> pure $ (triggerTimeStamps)
+        Just (InitialiseState _ _ _ sellerId triggerTimeStamps) -> pure $ (sellerId, triggerTimeStamps)
+        Just (CloseAuctionState _ _ _ sellerId triggerTimeStamps) -> pure $ (sellerId, triggerTimeStamps)
+        Just (CollectFundsAndGiveRewardsState _ _ _ sellerId triggerTimeStamps) -> pure $ (sellerId, triggerTimeStamps)
+        Just (ContinueAuctionState _ _ _ sellerId triggerTimeStamps) -> pure $ (sellerId, triggerTimeStamps)
+        Just (CheckWinnerState _ _ _ sellerId triggerTimeStamps) -> pure $ (sellerId, triggerTimeStamps)
+        Just (None sellerId triggerTimeStamps) -> pure $ (sellerId, triggerTimeStamps)
 
-getFields :: Contract () AuctionSchema T.Text (Integer, Integer, Integer, Integer, Integer, [(Integer,(POSIXTime,Slot))])
+getFields :: Contract () AuctionSchema T.Text (Value, PaymentPubKeyHash, Integer, [PaymentPubKeyHash], [(Integer,(POSIXTime,Slot))])
 getFields = do
     currState <- mapSMError' $ getCurrentStateSM client
     case currState of
-        Just (InitialiseState minPrice targetPrice balanceA balanceB currentBid triggerTimeStamps) -> pure $ (minPrice, targetPrice, balanceA, balanceB, currentBid, triggerTimeStamps)
-        Just (RunAuctionState minPrice targetPrice balanceA balanceB currentBid triggerTimeStamps) -> pure $ (minPrice, targetPrice, balanceA, balanceB, currentBid, triggerTimeStamps)
-        Just (BidState minPrice targetPrice balanceA balanceB currentBid triggerTimeStamps) -> pure $ (minPrice, targetPrice, balanceA, balanceB, currentBid, triggerTimeStamps)
-        Just (StopBiddingState minPrice targetPrice balanceA balanceB currentBid triggerTimeStamps) -> pure $ (minPrice, targetPrice, balanceA, balanceB, currentBid, triggerTimeStamps)
-        Just (SellState minPrice targetPrice balanceA balanceB currentBid triggerTimeStamps) -> pure $ (minPrice, targetPrice, balanceA, balanceB, currentBid, triggerTimeStamps)
-        Just (NotSellState minPrice targetPrice balanceA balanceB currentBid triggerTimeStamps) -> pure $ (minPrice, targetPrice, balanceA, balanceB, currentBid, triggerTimeStamps)
+        Just (InitialiseState currBid lastBidder asset sellerId triggerTimeStamps) -> pure $ (currBid, lastBidder, asset, sellerId, triggerTimeStamps)
+        Just (CloseAuctionState currBid lastBidder asset sellerId triggerTimeStamps) -> pure $ (currBid, lastBidder, asset, sellerId, triggerTimeStamps)
+        Just (CollectFundsAndGiveRewardsState currBid lastBidder asset sellerId triggerTimeStamps) -> pure $ (currBid, lastBidder, asset, sellerId, triggerTimeStamps)
+        Just (ContinueAuctionState currBid lastBidder asset sellerId triggerTimeStamps) -> pure $ (currBid, lastBidder, asset, sellerId, triggerTimeStamps)
+        Just (CheckWinnerState currBid lastBidder asset sellerId triggerTimeStamps) -> pure $ (currBid, lastBidder, asset, sellerId, triggerTimeStamps)
 
 
 -- | Beginning of Endpoint declarations
 initialise :: Promise () AuctionSchema T.Text ()
-initialise = endpoint @"initialise" @InitialiseParams $ \(InitialiseParams mPrice tPrice bA bB cBid) -> do
+initialise = endpoint @"initialise" @InitialiseParams $ \(InitialiseParams initBid assetToSell) -> do
     -- | Received the parameters
     currentState <- mapSMError' $ getCurrentStateSM client
-    if isValidCallInState currentState (InitialiseInput undefined undefined undefined undefined undefined undefined undefined) then do
+    if isValidCallInState currentState (InitialiseInput undefined undefined undefined undefined undefined undefined) then do
     -- | Calling business logic function...
       mapSMError' $ initialiseSM
       oldVal <- fundsInContract
-      (triggerTimeStamps) <- getContractInfo
-      logic <- initialiseLogic mPrice tPrice bA bB cBid 0 0 0 0 0 triggerTimeStamps oldVal
+      (sellerId, triggerTimeStamps) <- getContractInfo
+      logic <- initialiseLogic initBid assetToSell mempty (stringToKey "00000000000000000000000000000000000000000000000000000000") 0 sellerId triggerTimeStamps oldVal
       case logic of
-        Left (minPrice, targetPrice, balanceA, balanceB, currentBid, stateVal, constraint) -> do
-          res <- mapSMError' $ runContractStep client (InitialiseInput minPrice targetPrice balanceA balanceB currentBid triggerTimeStamps stateVal) constraint
+        Left (currBid, lastBidder, asset, stateVal, constraint) -> do
+          res <- mapSMError' $ runContractStep client (InitialiseInput currBid lastBidder asset sellerId triggerTimeStamps stateVal) constraint
           case res of
                 Just s -> do
                     logInfo ("Successful transaction to state: " <> show s)
@@ -288,39 +278,81 @@ initialise = endpoint @"initialise" @InitialiseParams $ \(InitialiseParams mPric
       logError @String "Invalid invocation of endpoint initialise"
 
  
-runAuction :: Promise () AuctionSchema T.Text ()
-runAuction = endpoint @"runauction" @RunAuctionParams $ \(RunAuctionParams offerPriceValue) -> do
+closeAuction :: Promise () AuctionSchema T.Text ()
+closeAuction = endpoint @"closeauction" $ \() -> do
     -- | Received the parameters
     currentState <- mapSMError' $ getCurrentStateSM client
-    if isValidCallInState currentState (RunAuctionInput undefined undefined undefined undefined undefined undefined undefined) then do
+    if isValidCallInState currentState (CloseAuctionInput undefined undefined undefined undefined undefined undefined) then do
     -- | Calling business logic function...
       oldVal <- fundsInContract
-      (minPriceOld, targetPriceOld, balanceAOld, balanceBOld, currentBidOld, triggerTimeStamps) <- getFields
-      logic <- runAuctionLogic offerPriceValue minPriceOld targetPriceOld balanceAOld balanceBOld currentBidOld triggerTimeStamps oldVal
+      (currBidOld, lastBidderOld, assetOld, sellerId, triggerTimeStamps) <- getFields
+      logic <- closeAuctionLogic currBidOld lastBidderOld assetOld sellerId triggerTimeStamps oldVal
       case logic of
-        Left (minPrice, targetPrice, balanceA, balanceB, currentBid, stateVal, constraint) -> do
-          res <- mapSMError' $ runContractStep client (RunAuctionInput minPrice targetPrice balanceA balanceB currentBid triggerTimeStamps stateVal) constraint
+        Left (currBid, lastBidder, asset, stateVal, constraint) -> do
+          res <- mapSMError' $ runContractStep client (CloseAuctionInput currBid lastBidder asset sellerId triggerTimeStamps stateVal) constraint
           case res of
                 Just s -> do
                     logInfo ("Successful transaction to state: " <> show s)
                 _ -> logError @String "Invalid operation in endpoint."
         Right (Error x) -> logWarn @Text x
     else
-      logError @String "Invalid invocation of endpoint runAuction"
+      logError @String "Invalid invocation of endpoint closeAuction"
+
+ 
+collectFundsAndGiveRewards :: Promise () AuctionSchema T.Text ()
+collectFundsAndGiveRewards = endpoint @"collectfundsandgiverewards" $ \() -> do
+    -- | Received the parameters
+    currentState <- mapSMError' $ getCurrentStateSM client
+    if isValidCallInState currentState (CollectFundsAndGiveRewardsInput undefined undefined undefined undefined undefined undefined) then do
+    -- | Calling business logic function...
+      oldVal <- fundsInContract
+      (currBidOld, lastBidderOld, assetOld, sellerId, triggerTimeStamps) <- getFields
+      logic <- collectFundsAndGiveRewardsLogic currBidOld lastBidderOld assetOld sellerId triggerTimeStamps oldVal
+      case logic of
+        Left (currBid, lastBidder, asset, stateVal, constraint) -> do
+          res <- mapSMError' $ runContractStep client (CollectFundsAndGiveRewardsInput currBid lastBidder asset sellerId triggerTimeStamps stateVal) constraint
+          case res of
+                Just s -> do
+                    logInfo ("Successful transaction to state: " <> show s)
+                _ -> logError @String "Invalid operation in endpoint."
+        Right (Error x) -> logWarn @Text x
+    else
+      logError @String "Invalid invocation of endpoint collectFundsAndGiveRewards"
+
+ 
+continueAuction :: Promise () AuctionSchema T.Text ()
+continueAuction = endpoint @"continueauction" $ \() -> do
+    -- | Received the parameters
+    currentState <- mapSMError' $ getCurrentStateSM client
+    if isValidCallInState currentState (ContinueAuctionInput undefined undefined undefined undefined undefined undefined) then do
+    -- | Calling business logic function...
+      oldVal <- fundsInContract
+      (currBidOld, lastBidderOld, assetOld, sellerId, triggerTimeStamps) <- getFields
+      logic <- continueAuctionLogic currBidOld lastBidderOld assetOld sellerId triggerTimeStamps oldVal
+      case logic of
+        Left (currBid, lastBidder, asset, stateVal, constraint) -> do
+          res <- mapSMError' $ runContractStep client (ContinueAuctionInput currBid lastBidder asset sellerId triggerTimeStamps stateVal) constraint
+          case res of
+                Just s -> do
+                    logInfo ("Successful transaction to state: " <> show s)
+                _ -> logError @String "Invalid operation in endpoint."
+        Right (Error x) -> logWarn @Text x
+    else
+      logError @String "Invalid invocation of endpoint continueAuction"
 
  
 bid :: Promise () AuctionSchema T.Text ()
-bid = endpoint @"bid" $ \() -> do
+bid = endpoint @"bid" @BidParams $ \(BidParams newBid) -> do
     -- | Received the parameters
     currentState <- mapSMError' $ getCurrentStateSM client
-    if isValidCallInState currentState (BidInput undefined undefined undefined undefined undefined undefined undefined) then do
+    if isValidCallInState currentState (BidInput undefined undefined undefined undefined undefined undefined) then do
     -- | Calling business logic function...
       oldVal <- fundsInContract
-      (minPriceOld, targetPriceOld, balanceAOld, balanceBOld, currentBidOld, triggerTimeStamps) <- getFields
-      logic <- bidLogic minPriceOld targetPriceOld balanceAOld balanceBOld currentBidOld triggerTimeStamps oldVal
+      (currBidOld, lastBidderOld, assetOld, sellerId, triggerTimeStamps) <- getFields
+      logic <- bidLogic newBid currBidOld lastBidderOld assetOld sellerId triggerTimeStamps oldVal
       case logic of
-        Left (minPrice, targetPrice, balanceA, balanceB, currentBid, stateVal, constraint) -> do
-          res <- mapSMError' $ runContractStep client (BidInput minPrice targetPrice balanceA balanceB currentBid triggerTimeStamps stateVal) constraint
+        Left (currBid, lastBidder, asset, stateVal, constraint) -> do
+          res <- mapSMError' $ runContractStep client (BidInput currBid lastBidder asset sellerId triggerTimeStamps stateVal) constraint
           case res of
                 Just s -> do
                     logInfo ("Successful transaction to state: " <> show s)
@@ -330,121 +362,48 @@ bid = endpoint @"bid" $ \() -> do
       logError @String "Invalid invocation of endpoint bid"
 
  
-bidding :: Promise () AuctionSchema T.Text ()
-bidding = endpoint @"bidding" $ \() -> do
+checkWinner :: Promise () AuctionSchema T.Text ()
+checkWinner = endpoint @"checkwinner" $ \() -> do
     -- | Received the parameters
     currentState <- mapSMError' $ getCurrentStateSM client
-    if isValidCallInState currentState (BiddingInput undefined undefined undefined undefined undefined undefined undefined) then do
+    if isValidCallInState currentState (CheckWinnerInput undefined undefined undefined undefined undefined undefined) then do
     -- | Calling business logic function...
       oldVal <- fundsInContract
-      (minPriceOld, targetPriceOld, balanceAOld, balanceBOld, currentBidOld, triggerTimeStamps) <- getFields
-      logic <- biddingLogic minPriceOld targetPriceOld balanceAOld balanceBOld currentBidOld triggerTimeStamps oldVal
+      (currBidOld, lastBidderOld, assetOld, sellerId, triggerTimeStamps) <- getFields
+      logic <- checkWinnerLogic currBidOld lastBidderOld assetOld sellerId triggerTimeStamps oldVal
       case logic of
-        Left (minPrice, targetPrice, balanceA, balanceB, currentBid, stateVal, constraint) -> do
-          res <- mapSMError' $ runContractStep client (BiddingInput minPrice targetPrice balanceA balanceB currentBid triggerTimeStamps stateVal) constraint
+        Left (currBid, lastBidder, asset, stateVal, constraint) -> do
+          res <- mapSMError' $ runContractStep client (CheckWinnerInput currBid lastBidder asset sellerId triggerTimeStamps stateVal) constraint
           case res of
                 Just s -> do
                     logInfo ("Successful transaction to state: " <> show s)
                 _ -> logError @String "Invalid operation in endpoint."
         Right (Error x) -> logWarn @Text x
     else
-      logError @String "Invalid invocation of endpoint bidding"
-
- 
-stopBidding :: Promise () AuctionSchema T.Text ()
-stopBidding = endpoint @"stopbidding" $ \() -> do
-    -- | Received the parameters
-    currentState <- mapSMError' $ getCurrentStateSM client
-    if isValidCallInState currentState (StopBiddingInput undefined undefined undefined undefined undefined undefined undefined) then do
-    -- | Calling business logic function...
-      oldVal <- fundsInContract
-      (minPriceOld, targetPriceOld, balanceAOld, balanceBOld, currentBidOld, triggerTimeStamps) <- getFields
-      logic <- stopBiddingLogic minPriceOld targetPriceOld balanceAOld balanceBOld currentBidOld triggerTimeStamps oldVal
-      case logic of
-        Left (minPrice, targetPrice, balanceA, balanceB, currentBid, stateVal, constraint) -> do
-          res <- mapSMError' $ runContractStep client (StopBiddingInput minPrice targetPrice balanceA balanceB currentBid triggerTimeStamps stateVal) constraint
-          case res of
-                Just s -> do
-                    logInfo ("Successful transaction to state: " <> show s)
-                _ -> logError @String "Invalid operation in endpoint."
-        Right (Error x) -> logWarn @Text x
-    else
-      logError @String "Invalid invocation of endpoint stopBidding"
-
- 
-sell :: Promise () AuctionSchema T.Text ()
-sell = endpoint @"sell" $ \() -> do
-    -- | Received the parameters
-    currentState <- mapSMError' $ getCurrentStateSM client
-    if isValidCallInState currentState (SellInput undefined undefined undefined undefined undefined undefined undefined) then do
-    -- | Calling business logic function...
-      oldVal <- fundsInContract
-      (minPriceOld, targetPriceOld, balanceAOld, balanceBOld, currentBidOld, triggerTimeStamps) <- getFields
-      logic <- sellLogic minPriceOld targetPriceOld balanceAOld balanceBOld currentBidOld triggerTimeStamps oldVal
-      case logic of
-        Left (minPrice, targetPrice, balanceA, balanceB, currentBid, stateVal, constraint) -> do
-          res <- mapSMError' $ runContractStep client (SellInput minPrice targetPrice balanceA balanceB currentBid triggerTimeStamps stateVal) constraint
-          case res of
-                Just s -> do
-                    logInfo ("Successful transaction to state: " <> show s)
-                _ -> logError @String "Invalid operation in endpoint."
-        Right (Error x) -> logWarn @Text x
-    else
-      logError @String "Invalid invocation of endpoint sell"
-
- 
-notSell :: Promise () AuctionSchema T.Text ()
-notSell = endpoint @"notsell" $ \() -> do
-    -- | Received the parameters
-    currentState <- mapSMError' $ getCurrentStateSM client
-    if isValidCallInState currentState (NotSellInput undefined undefined undefined undefined undefined undefined undefined) then do
-    -- | Calling business logic function...
-      oldVal <- fundsInContract
-      (minPriceOld, targetPriceOld, balanceAOld, balanceBOld, currentBidOld, triggerTimeStamps) <- getFields
-      logic <- notSellLogic minPriceOld targetPriceOld balanceAOld balanceBOld currentBidOld triggerTimeStamps oldVal
-      case logic of
-        Left (minPrice, targetPrice, balanceA, balanceB, currentBid, stateVal, constraint) -> do
-          res <- mapSMError' $ runContractStep client (NotSellInput minPrice targetPrice balanceA balanceB currentBid triggerTimeStamps stateVal) constraint
-          case res of
-                Just s -> do
-                    logInfo ("Successful transaction to state: " <> show s)
-                _ -> logError @String "Invalid operation in endpoint."
-        Right (Error x) -> logWarn @Text x
-    else
-      logError @String "Invalid invocation of endpoint notSell"
+      logError @String "Invalid invocation of endpoint checkWinner"
 
  
 
 -- | Data structure used in the logic functions to track the change of the fields that may be altered from the execution of an endpoint.
 data LogicOutput = LogicOutput{
-    minPrice :: Integer,
-    targetPrice :: Integer,
-    balanceA :: Integer,
-    balanceB :: Integer,
-    currentBid :: Integer,
+    currBid :: Value,
+    lastBidder :: PaymentPubKeyHash,
+    asset :: Integer,
     stateVal :: Value,
     constraint :: TxConstraints AuctionInput AuctionState
 }
 
--- | Changes the value of the minPrice field.
-setMinPrice :: Integer -> LogicOutput -> LogicOutput
-setMinPrice newMinPrice output = output{ minPrice = newMinPrice }
+-- | Changes the value of the currBid field.
+setCurrBid :: Value -> LogicOutput -> LogicOutput
+setCurrBid newCurrBid output = output{ currBid = newCurrBid }
 
--- | Changes the value of the targetPrice field.
-setTargetPrice :: Integer -> LogicOutput -> LogicOutput
-setTargetPrice newTargetPrice output = output{ targetPrice = newTargetPrice }
+-- | Changes the value of the lastBidder field.
+setLastBidder :: PaymentPubKeyHash -> LogicOutput -> LogicOutput
+setLastBidder newLastBidder output = output{ lastBidder = newLastBidder }
 
--- | Changes the value of the balanceA field.
-setBalanceA :: Integer -> LogicOutput -> LogicOutput
-setBalanceA newBalanceA output = output{ balanceA = newBalanceA }
-
--- | Changes the value of the balanceB field.
-setBalanceB :: Integer -> LogicOutput -> LogicOutput
-setBalanceB newBalanceB output = output{ balanceB = newBalanceB }
-
--- | Changes the value of the currentBid field.
-setCurrentBid :: Integer -> LogicOutput -> LogicOutput
-setCurrentBid newCurrentBid output = output{ currentBid = newCurrentBid }
+-- | Changes the value of the asset field.
+setAsset :: Integer -> LogicOutput -> LogicOutput
+setAsset newAsset output = output{ asset = newAsset }
 
 -- | Changes the value of the stateVal field.
 setStateVal :: Value -> LogicOutput -> LogicOutput
@@ -454,41 +413,35 @@ setStateVal newStateVal output = output{ stateVal = newStateVal }
 setConstraint :: TxConstraints AuctionInput AuctionState -> LogicOutput -> LogicOutput
 setConstraint newConstraint output = output{ constraint = newConstraint }
 
-getOutput :: LogicOutput -> (Integer,Integer,Integer,Integer,Integer,Value,TxConstraints AuctionInput AuctionState)
-getOutput out = (minPrice out,targetPrice out,balanceA out,balanceB out,currentBid out,stateVal out,constraint out)
+getOutput :: LogicOutput -> (Value,PaymentPubKeyHash,Integer,Value,TxConstraints AuctionInput AuctionState)
+getOutput out = (currBid out,lastBidder out,asset out,stateVal out,constraint out)
 
-getSoloOutput :: LogicOutput -> (Integer,Integer,Integer,Integer,Integer,Value,TxConstraints AuctionInput AuctionState)
-getSoloOutput out = (minPrice out,targetPrice out,balanceA out,balanceB out,currentBid out,stateVal out,constraint out)
+getSoloOutput :: LogicOutput -> (Value,PaymentPubKeyHash,Integer,Value,TxConstraints AuctionInput AuctionState)
+getSoloOutput out = (currBid out,lastBidder out,asset out,stateVal out,constraint out)
 
 -- | Logic functions (for one of the endpoints and triggers declared in the protocol
 -- | TODO: customize this section of the contract!
 
-initialiseLogic :: Integer ->
+initialiseLogic :: Value ->
                    Integer ->
+                   Value ->
+                   PaymentPubKeyHash ->
                    Integer ->
-                   Integer ->
-                   Integer ->
-                   Integer ->
-                   Integer ->
-                   Integer ->
-                   Integer ->
-                   Integer ->
+                   [PaymentPubKeyHash] ->
                    [(Integer, (POSIXTime, Slot))] ->
                    Value ->
                    Contract ()
                             AuctionSchema
                             T.Text
-                            (Either (Integer,
-                                     Integer,
-                                     Integer,
-                                     Integer,
+                            (Either (Value,
+                                     PaymentPubKeyHash,
                                      Integer,
                                      Value,
                                      TxConstraints AuctionInput AuctionState)
                                     AuctionError)
-initialiseLogic mPrice tPrice bA bB cBid minPrice targetPrice balanceA balanceB currentBid triggerTimeStamps stateVal = do returnOutputOk $ setMinPrice mPrice $ setTargetPrice tPrice $ setBalanceA bA $ setBalanceB bB $ setCurrentBid cBid $ setStateVal stateVal output
+initialiseLogic initBid assetToSell currBid lastBidder asset sellerId triggerTimeStamps stateVal = do returnOutputOk $ setCurrBid initBid $ setLastBidder noKey $ setAsset assetToSell output
                     where output :: LogicOutput
-                          output = LogicOutput minPrice targetPrice balanceA balanceB currentBid stateVal mempty
+                          output = LogicOutput currBid lastBidder asset stateVal mempty
                           printMsg :: String -> Contract () AuctionSchema T.Text ()
                           printMsg msg = logInfo @String msg
                           printError :: String -> Contract () AuctionSchema T.Text ()
@@ -497,10 +450,8 @@ initialiseLogic mPrice tPrice bA bB cBid minPrice targetPrice balanceA balanceB 
                                          Contract ()
                                                   AuctionSchema
                                                   T.Text
-                                                  (Either (Integer,
-                                                           Integer,
-                                                           Integer,
-                                                           Integer,
+                                                  (Either (Value,
+                                                           PaymentPubKeyHash,
                                                            Integer,
                                                            Value,
                                                            TxConstraints AuctionInput AuctionState)
@@ -509,41 +460,421 @@ initialiseLogic mPrice tPrice bA bB cBid minPrice targetPrice balanceA balanceB 
                           returnOk :: Contract ()
                                                AuctionSchema
                                                T.Text
-                                               (Either (Integer,
-                                                        Integer,
-                                                        Integer,
-                                                        Integer,
+                                               (Either (Value,
+                                                        PaymentPubKeyHash,
                                                         Integer,
                                                         Value,
                                                         TxConstraints AuctionInput AuctionState)
                                                        AuctionError)
-                          returnOk = pure $ Left (minPrice,
-                                                  targetPrice,
-                                                  balanceA,
-                                                  balanceB,
-                                                  currentBid,
+                          returnOk = pure $ Left (currBid,
+                                                  lastBidder,
+                                                  asset,
                                                   stateVal,
                                                   mempty)
                           returnOutputOk :: LogicOutput ->
                                             Contract ()
                                                      AuctionSchema
                                                      T.Text
-                                                     (Either (Integer,
-                                                              Integer,
-                                                              Integer,
-                                                              Integer,
+                                                     (Either (Value,
+                                                              PaymentPubKeyHash,
                                                               Integer,
                                                               Value,
                                                               TxConstraints AuctionInput
                                                                             AuctionState)
                                                              AuctionError)
                           returnOutputOk out = pure $ Left $ getOutput out
-                          returnOkWith :: Integer ->
-                                          Integer ->
-                                          Integer ->
-                                          Integer ->
+                          returnOkWith :: Value ->
+                                          PaymentPubKeyHash ->
                                           Integer ->
                                           Value ->
                                           TxConstraints AuctionInput AuctionState ->
                                           Contract ()
-                             
+                                                   AuctionSchema
+                                                   T.Text
+                                                   (Either (Value,
+                                                            PaymentPubKeyHash,
+                                                            Integer,
+                                                            Value,
+                                                            TxConstraints AuctionInput AuctionState)
+                                                           AuctionError)
+                          returnOkWith currBidRet lastBidderRet assetRet stateValRet constraintRet = pure $ Left (currBidRet,
+                                                                                                                  lastBidderRet,
+                                                                                                                  assetRet,
+                                                                                                                  stateValRet,
+                                                                                                                  constraintRet)
+
+closeAuctionLogic :: Value ->
+                     PaymentPubKeyHash ->
+                     Integer ->
+                     [PaymentPubKeyHash] ->
+                     [(Integer, (POSIXTime, Slot))] ->
+                     Value ->
+                     Contract ()
+                              AuctionSchema
+                              T.Text
+                              (Either (Value,
+                                       PaymentPubKeyHash,
+                                       Integer,
+                                       Value,
+                                       TxConstraints AuctionInput AuctionState)
+                                      AuctionError)
+closeAuctionLogic currBid lastBidder asset sellerId triggerTimeStamps stateVal = do returnOk
+                      where output :: LogicOutput
+                            output = LogicOutput currBid lastBidder asset stateVal mempty
+                            printMsg :: String -> Contract () AuctionSchema T.Text ()
+                            printMsg msg = logInfo @String msg
+                            printError :: String -> Contract () AuctionSchema T.Text ()
+                            printError err = logError @String err
+                            returnError :: String ->
+                                           Contract ()
+                                                    AuctionSchema
+                                                    T.Text
+                                                    (Either (Value,
+                                                             PaymentPubKeyHash,
+                                                             Integer,
+                                                             Value,
+                                                             TxConstraints AuctionInput
+                                                                           AuctionState)
+                                                            AuctionError)
+                            returnError err = pure $ Right $ Error $ T.pack err
+                            returnOk :: Contract ()
+                                                 AuctionSchema
+                                                 T.Text
+                                                 (Either (Value,
+                                                          PaymentPubKeyHash,
+                                                          Integer,
+                                                          Value,
+                                                          TxConstraints AuctionInput AuctionState)
+                                                         AuctionError)
+                            returnOk = pure $ Left (currBid,
+                                                    lastBidder,
+                                                    asset,
+                                                    stateVal,
+                                                    mempty)
+                            returnOutputOk :: LogicOutput ->
+                                              Contract ()
+                                                       AuctionSchema
+                                                       T.Text
+                                                       (Either (Value,
+                                                                PaymentPubKeyHash,
+                                                                Integer,
+                                                                Value,
+                                                                TxConstraints AuctionInput
+                                                                              AuctionState)
+                                                               AuctionError)
+                            returnOutputOk out = pure $ Left $ getOutput out
+                            returnOkWith :: Value ->
+                                            PaymentPubKeyHash ->
+                                            Integer ->
+                                            Value ->
+                                            TxConstraints AuctionInput AuctionState ->
+                                            Contract ()
+                                                     AuctionSchema
+                                                     T.Text
+                                                     (Either (Value,
+                                                              PaymentPubKeyHash,
+                                                              Integer,
+                                                              Value,
+                                                              TxConstraints AuctionInput
+                                                                            AuctionState)
+                                                             AuctionError)
+                            returnOkWith currBidRet lastBidderRet assetRet stateValRet constraintRet = pure $ Left (currBidRet,
+                                                                                                                    lastBidderRet,
+                                                                                                                    assetRet,
+                                                                                                                    stateValRet,
+                                                                                                                    constraintRet)
+
+collectFundsAndGiveRewardsLogic :: Value ->
+                                   PaymentPubKeyHash ->
+                                   Integer ->
+                                   [PaymentPubKeyHash] ->
+                                   [(Integer, (POSIXTime, Slot))] ->
+                                   Value ->
+                                   Contract ()
+                                            AuctionSchema
+                                            T.Text
+                                            (Either (Value,
+                                                     PaymentPubKeyHash,
+                                                     Integer,
+                                                     Value,
+                                                     TxConstraints AuctionInput AuctionState)
+                                                    AuctionError)
+collectFundsAndGiveRewardsLogic currBid lastBidder asset sellerId triggerTimeStamps stateVal = do returnOutputOk $ setConstraint (Constraints.mustPayToPubKey (head sellerId) currBid) $ setStateVal mempty output
+                                    where output :: LogicOutput
+                                          output = LogicOutput currBid lastBidder asset stateVal mempty
+                                          printMsg :: String -> Contract () AuctionSchema T.Text ()
+                                          printMsg msg = logInfo @String msg
+                                          printError :: String ->
+                                                        Contract () AuctionSchema T.Text ()
+                                          printError err = logError @String err
+                                          returnError :: String ->
+                                                         Contract ()
+                                                                  AuctionSchema
+                                                                  T.Text
+                                                                  (Either (Value,
+                                                                           PaymentPubKeyHash,
+                                                                           Integer,
+                                                                           Value,
+                                                                           TxConstraints AuctionInput
+                                                                                         AuctionState)
+                                                                          AuctionError)
+                                          returnError err = pure $ Right $ Error $ T.pack err
+                                          returnOk :: Contract ()
+                                                               AuctionSchema
+                                                               T.Text
+                                                               (Either (Value,
+                                                                        PaymentPubKeyHash,
+                                                                        Integer,
+                                                                        Value,
+                                                                        TxConstraints AuctionInput
+                                                                                      AuctionState)
+                                                                       AuctionError)
+                                          returnOk = pure $ Left (currBid,
+                                                                  lastBidder,
+                                                                  asset,
+                                                                  stateVal,
+                                                                  mempty)
+                                          returnOutputOk :: LogicOutput ->
+                                                            Contract ()
+                                                                     AuctionSchema
+                                                                     T.Text
+                                                                     (Either (Value,
+                                                                              PaymentPubKeyHash,
+                                                                              Integer,
+                                                                              Value,
+                                                                              TxConstraints AuctionInput
+                                                                                            AuctionState)
+                                                                             AuctionError)
+                                          returnOutputOk out = pure $ Left $ getOutput out
+                                          returnOkWith :: Value ->
+                                                          PaymentPubKeyHash ->
+                                                          Integer ->
+                                                          Value ->
+                                                          TxConstraints AuctionInput AuctionState ->
+                                                          Contract ()
+                                                                   AuctionSchema
+                                                                   T.Text
+                                                                   (Either (Value,
+                                                                            PaymentPubKeyHash,
+                                                                            Integer,
+                                                                            Value,
+                                                                            TxConstraints AuctionInput
+                                                                                          AuctionState)
+                                                                           AuctionError)
+                                          returnOkWith currBidRet lastBidderRet assetRet stateValRet constraintRet = pure $ Left (currBidRet,
+                                                                                                                                  lastBidderRet,
+                                                                                                                                  assetRet,
+                                                                                                                                  stateValRet,
+                                                                                                                                  constraintRet)
+
+continueAuctionLogic :: Value ->
+                        PaymentPubKeyHash ->
+                        Integer ->
+                        [PaymentPubKeyHash] ->
+                        [(Integer, (POSIXTime, Slot))] ->
+                        Value ->
+                        Contract ()
+                                 AuctionSchema
+                                 T.Text
+                                 (Either (Value,
+                                          PaymentPubKeyHash,
+                                          Integer,
+                                          Value,
+                                          TxConstraints AuctionInput AuctionState)
+                                         AuctionError)
+continueAuctionLogic currBid lastBidder asset sellerId triggerTimeStamps stateVal = do returnOk
+                         where output :: LogicOutput
+                               output = LogicOutput currBid lastBidder asset stateVal mempty
+                               printMsg :: String -> Contract () AuctionSchema T.Text ()
+                               printMsg msg = logInfo @String msg
+                               printError :: String -> Contract () AuctionSchema T.Text ()
+                               printError err = logError @String err
+                               returnError :: String ->
+                                              Contract ()
+                                                       AuctionSchema
+                                                       T.Text
+                                                       (Either (Value,
+                                                                PaymentPubKeyHash,
+                                                                Integer,
+                                                                Value,
+                                                                TxConstraints AuctionInput
+                                                                              AuctionState)
+                                                               AuctionError)
+                               returnError err = pure $ Right $ Error $ T.pack err
+                               returnOk :: Contract ()
+                                                    AuctionSchema
+                                                    T.Text
+                                                    (Either (Value,
+                                                             PaymentPubKeyHash,
+                                                             Integer,
+                                                             Value,
+                                                             TxConstraints AuctionInput
+                                                                           AuctionState)
+                                                            AuctionError)
+                               returnOk = pure $ Left (currBid,
+                                                       lastBidder,
+                                                       asset,
+                                                       stateVal,
+                                                       mempty)
+                               returnOutputOk :: LogicOutput ->
+                                                 Contract ()
+                                                          AuctionSchema
+                                                          T.Text
+                                                          (Either (Value,
+                                                                   PaymentPubKeyHash,
+                                                                   Integer,
+                                                                   Value,
+                                                                   TxConstraints AuctionInput
+                                                                                 AuctionState)
+                                                                  AuctionError)
+                               returnOutputOk out = pure $ Left $ getOutput out
+                               returnOkWith :: Value ->
+                                               PaymentPubKeyHash ->
+                                               Integer ->
+                                               Value ->
+                                               TxConstraints AuctionInput AuctionState ->
+                                               Contract ()
+                                                        AuctionSchema
+                                                        T.Text
+                                                        (Either (Value,
+                                                                 PaymentPubKeyHash,
+                                                                 Integer,
+                                                                 Value,
+                                                                 TxConstraints AuctionInput
+                                                                               AuctionState)
+                                                                AuctionError)
+                               returnOkWith currBidRet lastBidderRet assetRet stateValRet constraintRet = pure $ Left (currBidRet,
+                                                                                                                       lastBidderRet,
+                                                                                                                       assetRet,
+                                                                                                                       stateValRet,
+                                                                                                                       constraintRet)
+
+bidLogic :: Value ->
+            Value ->
+            PaymentPubKeyHash ->
+            Integer ->
+            [PaymentPubKeyHash] ->
+            [(Integer, (POSIXTime, Slot))] ->
+            Value ->
+            Contract ()
+                     AuctionSchema
+                     T.Text
+                     (Either (Value,
+                              PaymentPubKeyHash,
+                              Integer,
+                              Value,
+                              TxConstraints AuctionInput AuctionState)
+                             AuctionError)
+bidLogic newBid currBid lastBidder asset sellerId triggerTimeStamps stateVal = do {pkh <- ownPaymentPubKeyHash;
+                                                                                   if (newBid `V.gt` mempty) && (newBid `V.gt` currBid)
+                                                                                    then returnOutputOk $ (if (lastBidder == noKey)
+                                                                                                            then setCurrBid newBid $ setLastBidder pkh $ setStateVal newBid output
+                                                                                                            else setCurrBid newBid $ setLastBidder pkh $ setStateVal newBid $ setConstraint (Constraints.mustPayToPubKey lastBidder currBid) output)
+                                                                                    else returnError "Invalid Bid!"}
+             where output :: LogicOutput
+                   output = LogicOutput currBid lastBidder asset stateVal mempty
+                   printMsg :: String -> Contract () AuctionSchema T.Text ()
+                   printMsg msg = logInfo @String msg
+                   printError :: String -> Contract () AuctionSchema T.Text ()
+                   printError err = logError @String err
+                   returnError :: String ->
+                                  Contract ()
+                                           AuctionSchema
+                                           T.Text
+                                           (Either (Value,
+                                                    PaymentPubKeyHash,
+                                                    Integer,
+                                                    Value,
+                                                    TxConstraints AuctionInput AuctionState)
+                                                   AuctionError)
+                   returnError err = pure $ Right $ Error $ T.pack err
+                   returnOk :: Contract ()
+                                        AuctionSchema
+                                        T.Text
+                                        (Either (Value,
+                                                 PaymentPubKeyHash,
+                                                 Integer,
+                                                 Value,
+                                                 TxConstraints AuctionInput AuctionState)
+                                                AuctionError)
+                   returnOk = pure $ Left (currBid,
+                                           lastBidder,
+                                           asset,
+                                           stateVal,
+                                           mempty)
+                   returnOutputOk :: LogicOutput ->
+                                     Contract ()
+                                              AuctionSchema
+                                              T.Text
+                                              (Either (Value,
+                                                       PaymentPubKeyHash,
+                                                       Integer,
+                                                       Value,
+                                                       TxConstraints AuctionInput AuctionState)
+                                                      AuctionError)
+                   returnOutputOk out = pure $ Left $ getOutput out
+                   returnOkWith :: Value ->
+                                   PaymentPubKeyHash ->
+                                   Integer ->
+                                   Value ->
+                                   TxConstraints AuctionInput AuctionState ->
+                                   Contract ()
+                                            AuctionSchema
+                                            T.Text
+                                            (Either (Value,
+                                                     PaymentPubKeyHash,
+                                                     Integer,
+                                                     Value,
+                                                     TxConstraints AuctionInput AuctionState)
+                                                    AuctionError)
+                   returnOkWith currBidRet lastBidderRet assetRet stateValRet constraintRet = pure $ Left (currBidRet,
+                                                                                                           lastBidderRet,
+                                                                                                           assetRet,
+                                                                                                           stateValRet,
+                                                                                                           constraintRet)
+
+checkWinnerLogic :: Value -> PaymentPubKeyHash -> Integer -> [PaymentPubKeyHash] -> [(Integer,(POSIXTime,Slot))] -> Value -> Contract () AuctionSchema T.Text (Either (Value, PaymentPubKeyHash, Integer, Value, TxConstraints AuctionInput AuctionState) AuctionError)
+checkWinnerLogic currBid lastBidder asset sellerId triggerTimeStamps stateVal =  do
+  -- TODO: Implement the logic here
+  returnError "undefined function"
+    where
+        -- | Data structure that stores the information to eventually update the information inside the current or new state
+        output :: LogicOutput
+        output = LogicOutput currBid lastBidder asset stateVal mempty
+
+        -- | Prints a message in the console
+        printMsg :: String -> Contract () AuctionSchema T.Text ()
+        printMsg msg = logInfo @String msg
+
+        -- | Prints an error in the console
+        printError :: String -> Contract () AuctionSchema T.Text ()
+        printError err = logError @String err
+
+        -- | Returns an error
+        returnError :: String -> Contract () AuctionSchema T.Text (Either (Value, PaymentPubKeyHash, Integer, Value, TxConstraints AuctionInput AuctionState) AuctionError)
+        returnError err = pure $ Right $ Error $ T.pack err
+
+        -- | Returns in case of sucess with the fields unaltered
+        returnOk :: Contract () AuctionSchema T.Text (Either (Value, PaymentPubKeyHash, Integer, Value, TxConstraints AuctionInput AuctionState) AuctionError)
+        returnOk = pure $ Left (currBid, lastBidder, asset, stateVal, mempty)
+
+        -- | Returns in case of sucess with the help of a data structure that tracks the change of some fields
+        returnOutputOk :: LogicOutput -> Contract () AuctionSchema T.Text (Either (Value, PaymentPubKeyHash, Integer, Value, TxConstraints AuctionInput AuctionState) AuctionError)
+        returnOutputOk out = pure $ Left $ getOutput out
+
+        -- | Returns in case of sucess with the all the fields especified with the same or a new value
+        returnOkWith :: Value -> PaymentPubKeyHash -> Integer -> Value -> TxConstraints AuctionInput AuctionState -> Contract () AuctionSchema T.Text (Either (Value, PaymentPubKeyHash, Integer, Value, TxConstraints AuctionInput AuctionState) AuctionError)
+        returnOkWith currBidRet lastBidderRet assetRet stateValRet constraintRet = pure $ Left (currBidRet, lastBidderRet, assetRet, stateValRet, constraintRet)
+
+
+
+
+
+-- | Defining the contract to run on the playground
+contract :: Contract () AuctionSchema T.Text ()
+contract = selectList[initialise, closeAuction, collectFundsAndGiveRewards, continueAuction, bid, checkWinner]
+
+endpoints :: Contract () AuctionSchema T.Text ()
+endpoints = forever contract
+
+mkSchemaDefinitions ''AuctionSchema

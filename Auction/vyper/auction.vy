@@ -3,73 +3,58 @@
 enum StateType:
     Started
     Bidding
-    Sold
-    NotSold
+    Withdrawing # (same state as Started but to simplify)
+    AuctionClosed
 
-event AuctionStoredEvent:
-    buyer: address
-    price: int128
+beneficiary: public(address)
 
+highestBidder: public(address)
+highestBid: public(uint256)
+pendingReturns: public(HashMap[address, uint256])
+ended: public(bool)
 state: public(StateType)
 
-buyer_1: public(address)
-buyer_2: public(address)
-balanceBuyer_1: public(int128)
-balanceBuyer_2: public(int128)
-
-seller: public(address)
-minimumPrice: public(int128)
-targetPrice: public(int128)
-
-currentBid: public(int128)
-currentBidder: public(address)
-
 @external
-def __init__(buyerFirst: address, buyerSecond: address, balanceFirst: int128, balanceSecond: int128, minPrice: int128, objectivePrice: int128):
-    self.seller = msg.sender
-    self.buyer_1 = buyerFirst
-    self.buyer_2 = buyerSecond
-    self.balanceBuyer_1 = balanceFirst
-    self.balanceBuyer_2 = balanceSecond
-    self.minimumPrice = minPrice
-    self.targetPrice = objectivePrice
-    self.currentBid = 0
+def __init__(_beneficiary: address):
+    self.beneficiary = _beneficiary
     self.state = StateType.Started
-    self.currentBidder = self.seller
 
 @external
-def runAuction():
-    assert self.state == StateType.Started, "Invalid State"
-    result: bool = True
-    start: int128 = 0
-    for i in range(start, start + 10):
-        if self.currentBidder != self.buyer_1:
-            result = self.bid(self.buyer_1)
-        else :
-            result = self.bid(self.buyer_2)
-        if result == False:
-            break
-    if self.currentBid < self.minimumPrice:
-        self.currentBidder = self.seller
-        self.state = StateType.NotSold
-    else:
-        self.state = StateType.Sold
+@payable # Function is able to receive Ether
+def bid():
+    assert self.state == StateType.Started or self.state == StateType.Withdrawing, "Invalid State." done
+    assert self.highestBidder != msg.sender, "Cant bid while being the highest bidder."
+    assert not self.ended, "Auction not live." done
+    assert msg.value > self.highestBid, "Invalid bid, due to low value."
 
-@internal
-def bid(buyer: address) -> bool:
-    assert self.buyer_1 == buyer or self.buyer_2 == buyer, "Invalid Buyer"
-    assert self.currentBidder != msg.sender, "Invalid Bidder"            
-    if self.getBalance(buyer) <= self.currentBid:
-        return False
-    else:
-        self.currentBid = self.currentBid + 1
-        self.currentBidder = buyer
-        self.state = StateType.Bidding
+    self.pendingReturns[self.highestBidder] += self.highestBid
+    self.highestBid = msg.value
+    self.highestBidder = msg.sender
+    self.state = StateType.Bidding
+
+@external
+def withdraw():
+    assert self.state == StateType.Withdrawing, "Invalid State."
+    pending_amount: uint256 = self.pendingReturns[msg.sender]
+    self.pendingReturns[msg.sender] = 0
+    self.state = StateType.Withdrawing
+    send(msg.sender, pending_amount)
+    
+@external
+def endAuction():
+    assert not self.ended, "Auction not live"
+    assert self.beneficiary == msg.sender, "Only beneficiary can end the Auction."
+
+    self.ended = True
+    self.state = StateType.AuctionClosed
+    send(self.beneficiary, self.highestBid)
+
+@external
+def WinnerOfAuction() -> bool:
+    assert self.ended, "Auction still live."
+    assert self.state == StateType.AuctionClosed, "Invalid State."
+    
+    if self.highestBidder == msg.sender:  
         return True
-
-@internal
-def getBalance(buyer: address) -> int128:
-        if buyer == self.buyer_1:
-            return self.balanceBuyer_1
-        else:
-            return self.balanceBuyer_2
+    else:
+        return False

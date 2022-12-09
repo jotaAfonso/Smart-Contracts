@@ -1,109 +1,127 @@
 //English Auction
 
 contract Bidder {
+    string name;
+    int bidAmount;
     int balance;
 
-    state Won;
+    state WonAuction;
     state Bidding;
 
-    Bidder@Owned(int m) {
+    Bidder@Owned(string n, int m, int b) {
+        bidAmount = b;
+        name = n;
         balance = m;
         -> Bidding;
     }
 
-    transaction getBalance(Bidder@Owned this) returns int {
-        return balance;
+    transaction createBid(Bidder@Owned this) returns int {
+        balance = balance - bidAmount;
+        return bidAmount;
     }
 
-    transaction won(Bidder@Owned >> Won this) {
-        -> Won;
+    transaction setBidAmount(Bidder@Owned this, int newBidAmount) {
+        bidAmount = newBidAmount;
+    }
+
+    transaction getBidAmount(Bidder@Owned this) returns int {
+        return bidAmount;
+    }
+
+    transaction getName(Bidder@Owned this) returns string {
+        return name;
+    }
+
+    transaction won(Bidder@Owned >> WonAuction this) {
+        -> WonAuction;
+    }
+
+    transaction returnBidMoney(Bidder@Owned this, int previousBid) {
+        balance = balance + previousBid;
     }
 }
 
 contract Seller {
-    state Sold;
+    state SoldItem {
+        int price;
+    }
     state Unsold;
 
     Seller@Owned() {
         -> Unsold;
     }
 
-    transaction sold(Seller@Owned >> Sold this) {
-        -> Sold();
+    transaction receiveBid(Seller@Owned >> SoldItem this, int finalBid) {
+        -> SoldItem(price = finalBid);
     }
-
 }
 
 main contract Auction {
 
-    Bidder@Owned partyA;
-    Bidder@Owned partyB;
     Seller@Owned seller;
 
-    state Started;
-    state Bidding;
-    state Sold;
-    state NotSold;
+    state Open {
+        int maxBid;
+        Bidder@Owned maxBidder;
+    }
 
-    int minimumPrice;
-    int targetPrice;
+    state Withdraw {
+        int refAmount;
+        Bidder@Owned refBidder;
+        int highestBid;
+        Bidder@Owned highestBidder;
 
-    int currentBid;
-    int currentBidder;
+    }
 
-    Auction@Owned(int min, int target) {
-        partyA = new Bidder(10);
-        partyB = new Bidder(10);
+    state AuctionClosed{
+        Bidder@Owned winner;        
+    }
+
+
+
+    Auction@Owned() {
         seller = new Seller();
-        minimumPrice = min;
-        targetPrice = target;
-        currentBid = 0;
-        currentBidder = 2;
-        -> Started;
+        -> Open(maxBid = -1, maxBidder = new Bidder("none",0, 0));
     }
 
-    transaction runAuction(Auction@Started >> (Sold | NotSold) this) {
-        bool result;        
-        
-        if (currentBidder == 2) {
-            result = makeBid(partyA);
-            if (result) {
-                currentBid = currentBid + 1;
-                currentBidder = 1;
+    transaction makeBid(Auction@Open >> (Open | Withdraw) this, Bidder@Bidding >> Unowned bidder) {
+        if (bidder.getBidAmount() > maxBid) {
+            if (maxBidder.getName() != bidder.getName()) {
+                ->Withdraw(refAmount = maxBid, refBidder = maxBidder, highestBid = bidder.createBid(), highestBidder = bidder);
             }
         }
-        if (currentBidder == 1) {
-            result = makeBid(partyB);
-            if (result) {
-                currentBid = currentBid + 1;
-                currentBidder = 2;
+    }
+
+    transaction withdrawFunds(Auction@Withdraw >> (Open | Withdraw) this, Bidder@Bidding >> Unowned bidder) {
+        if (refBidder.getName() != bidder.getName()) {
+            refBidder.returnBidMoney(refAmount);
+            -> Open(maxBid = highestBid, maxBidder = highestBidder);
+        }
+    }
+
+    transaction endAuction(Auction@(Open | Withdraw) >> AuctionClosed this) {
+        switch this {
+            case Open {
+                updateSellerBuyer(seller, maxBidder, maxBid);
+                 -> AuctionClosed(winner = maxBidder);         
             }
-        }
-        if (result){
-            runAuction();            
-        }
-
-        if (currentBid < minimumPrice){
-            currentBid = 0;
-            ->NotSold;        
-        }
-        else {
-            this.seller.sold();
-            if (currentBidder == 1){
-                this.partyA.won();            
-            }else{
-                this.partyA.won();
-            }                
-            ->Sold;        
+           case Withdraw {
+                updateSellerBuyer(seller, highestBidder, highestBid);
+                 -> AuctionClosed(winner = highestBidder);         
+           }
         }
     }
 
-    transaction makeBid(Bidder@Owned bidder) returns bool {
-        if ( bidder.getBalance() <= currentBid ) {
-            return false;
-        }
-        else {
-            return true;
-        } 
+    transaction updateSellerBuyer(Seller@Owned >> SoldItem sell, Bidder@Owned >> WonAuction buyer, int finalBid) {
+        sell.receiveBid(finalBid);
+        buyer.won();
     }
+
+    transaction checkWinner(Auction@AuctionClosed this, Bidder@(Bidding | WonAuction) >> Unowned bidder) returns bool {
+        if (winner.getName() != bidder.getName()) {
+            return true;        
+        }
+        return false;
+    }
+
 }
