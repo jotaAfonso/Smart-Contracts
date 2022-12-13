@@ -1,0 +1,109 @@
+module Marketplace where
+
+import Daml.Script
+
+type SimpleMarketplaceId = ContractId SimpleMarketplace
+
+data MarketStateType 
+  = ItemAvailable  
+  | OfferPlaced 
+  | Accepted 
+    deriving (Eq, Show)
+
+template SimpleMarketplace
+  with 
+    owner       : Party
+    description : Text
+    askingPrice : Int
+    state       : MarketStateType
+    buyer       : Party
+    offerPrice  : Int
+  where
+    signatory owner 
+    ensure owner /= buyer 
+      && description /= ""
+      && askingPrice > 0  
+    observer buyer
+    choice MakeOffer : SimpleMarketplaceId
+      with  
+        offer  : Int
+      controller buyer
+      do 
+          assertMsg "Item is not available for a offer." (this.state == ItemAvailable)
+          assertMsg "Offer too low." (offer > this.askingPrice)
+          assertMsg "Offer invalid." (offer > 0)
+          
+          create this with
+              offerPrice = offer
+              state = OfferPlaced
+    choice AcceptOffer : SimpleMarketplaceId
+      controller owner
+      do 
+          assertMsg "Invalid state of contract." (this.state == OfferPlaced)
+          create this with
+              state = Accepted
+    choice RejectOffer : SimpleMarketplaceId
+      controller owner
+      do 
+          assertMsg "Invalid state of contract." (this.state == OfferPlaced)
+          create this with
+              state = ItemAvailable
+
+template SimpleMarketplaceApp
+  with 
+    owner       : Party
+    description : Text
+    askingPrice : Int
+    buyer       : Party
+  where
+    signatory owner 
+    observer buyer
+    choice Build : SimpleMarketplaceId
+      controller owner
+      do
+        create SimpleMarketplace 
+          with
+            owner = this.owner
+            description = this.description
+            askingPrice = this.askingPrice
+            state = ItemAvailable
+            buyer = this.buyer
+            offerPrice = 0
+
+setup : Script SimpleMarketplaceId
+setup = script do    
+-- user_setup_begin
+  alice <- allocatePartyWithHint "Alice" (PartyIdHint "Alice")
+  bob <- allocatePartyWithHint "Bob" (PartyIdHint "Bob")
+  aliceId <- validateUserId "alice"
+  bobId <- validateUserId "bob"
+  createUser (User aliceId (Some alice)) [CanActAs alice]
+  createUser (User bobId (Some bob)) [CanActAs bob]
+-- user_setup_end
+
+  test <- submit alice do
+      createCmd SimpleMarketplaceApp with
+        owner = alice
+        description = "test"
+        askingPrice     = 5
+        buyer = bob
+
+  test <- submit alice do
+    exerciseCmd test Build
+
+  {-
+  submit alice do
+    exerciseCmd test AcceptOffer
+  -}
+
+  test <- submit bob do
+    exerciseCmd test MakeOffer with offer = 6
+
+  test <- submit alice do
+    exerciseCmd test RejectOffer
+
+  test <- submit bob do
+    exerciseCmd test MakeOffer with offer = 6
+
+  submit alice do
+    exerciseCmd test AcceptOffer

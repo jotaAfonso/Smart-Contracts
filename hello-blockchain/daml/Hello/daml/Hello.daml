@@ -1,0 +1,82 @@
+module Hello where
+
+import Daml.Script
+
+type HelloBlockChainId = ContractId HelloBlockChain
+
+data HelloStateType 
+  = Request 
+  | Respond
+    deriving (Eq, Show)
+
+template HelloBlockChain
+  with 
+    requestor : Party
+    responder : Party
+    state     : HelloStateType
+    msg       : Text
+  where
+    signatory requestor 
+    ensure msg /= ""  && requestor /= responder
+    observer responder
+    choice SendResponse : HelloBlockChainId
+      with  
+        newmsg  : Text
+      controller responder
+      do
+          assertMsg "Invalid State" (this.state /= Respond) 
+          create this with
+            msg = newmsg
+            state = Respond
+    choice SendRequest : HelloBlockChainId
+      with  
+        newmsg  : Text
+      controller requestor
+      do 
+          assertMsg "Invalid State" (this.state /= Request)
+          create this with
+              msg = newmsg
+              state = Request
+
+template HelloBlockChainApp
+  with 
+    requestor : Party
+    responder : Party
+    msg       : Text
+  where
+    signatory requestor 
+    observer responder
+    choice Build : HelloBlockChainId
+      controller requestor
+      do
+        create HelloBlockChain 
+          with
+            requestor = this.requestor
+            responder = this.responder
+            state = Request
+            msg = this.msg
+
+setup : Script HelloBlockChainId
+setup = script do    
+-- user_setup_begin
+  alice <- allocatePartyWithHint "Alice" (PartyIdHint "Alice")
+  bob <- allocatePartyWithHint "Bob" (PartyIdHint "Bob")
+  aliceId <- validateUserId "alice"
+  bobId <- validateUserId "bob"
+  createUser (User aliceId (Some alice)) [CanActAs alice]
+  createUser (User bobId (Some bob)) [CanActAs bob]
+-- user_setup_end
+  helloB <- submit alice do
+      createCmd HelloBlockChainApp with
+        requestor = alice
+        responder = bob
+        msg       = "Test"
+
+  helloB <- submit alice do
+    exerciseCmd helloB Build
+
+  helloB <- submit bob do
+    exerciseCmd helloB SendResponse with newmsg = "Test response"
+
+  submit alice do
+    exerciseCmd helloB SendRequest with newmsg = "Test request"

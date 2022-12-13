@@ -1,0 +1,103 @@
+module FrequentFlyer where
+
+import Daml.Script
+
+type FrequentFlyerId = ContractId FrequentFlyer
+
+data FlyerStateType 
+  = SetFlyerReward   
+  | MilesAdded
+    deriving (Eq, Show)
+
+data TotalRewardsState 
+  = Behind   
+  | UpToDate
+    deriving (Eq, Show)
+
+template FrequentFlyer
+  with 
+    flyer       : Party
+    airlineRep  : Party
+    rewardsPMile: Int
+    miles       : [Int]
+    state       : FlyerStateType
+    rewardsState: TotalRewardsState
+    totalRewards: Int
+  where
+    signatory airlineRep 
+    ensure flyer /= airlineRep 
+    observer flyer
+    choice AddMiles : FrequentFlyerId
+      with
+        millesAdd : [Int]
+      controller flyer
+      do          
+          create this with
+              miles = (++) millesAdd this.miles
+              state = MilesAdded
+              rewardsState = Behind
+    choice ComputeTotalRewards : FrequentFlyerId 
+      controller flyer
+      do 
+          assertMsg "Invalid state of contract." (this.state == MilesAdded)
+          create this with
+              totalRewards = sum (fmap (*this.rewardsPMile) miles) 
+              rewardsState = UpToDate
+
+
+template FrequentFlyerApp
+  with 
+    flyer       : Party
+    airlineRep  : Party
+    rewardsPMile: Int
+  where
+    signatory airlineRep 
+    observer flyer
+    choice Build : FrequentFlyerId
+      controller airlineRep
+      do
+        create FrequentFlyer 
+          with
+            flyer       = this.flyer
+            airlineRep  = this.airlineRep
+            rewardsPMile= this.rewardsPMile
+            miles       = []
+            state       = SetFlyerReward
+            rewardsState= UpToDate
+            totalRewards= 0
+
+setup : Script FrequentFlyerId
+setup = script do    
+-- user_setup_begin
+  alice <- allocatePartyWithHint "Alice" (PartyIdHint "Alice")
+  bob <- allocatePartyWithHint "Bob" (PartyIdHint "Bob")
+  aliceId <- validateUserId "alice"
+  bobId <- validateUserId "bob"
+  createUser (User aliceId (Some alice)) [CanActAs alice]
+  createUser (User bobId (Some bob)) [CanActAs bob]
+-- user_setup_end
+
+  test <- submit bob do
+      createCmd FrequentFlyerApp with
+        flyer = alice
+        airlineRep = bob
+        rewardsPMile = 10
+
+  test <- submit bob do
+    exerciseCmd test Build
+
+  test <- submit alice do
+    exerciseCmd test AddMiles with millesAdd = [1]
+
+  test <- submit alice do
+    exerciseCmd test AddMiles with millesAdd = [2]
+
+  test <- submit alice do
+    exerciseCmd test ComputeTotalRewards
+
+  test <- submit alice do
+    exerciseCmd test AddMiles with millesAdd = [3]
+  
+  submit alice do
+    exerciseCmd test ComputeTotalRewards
+  
