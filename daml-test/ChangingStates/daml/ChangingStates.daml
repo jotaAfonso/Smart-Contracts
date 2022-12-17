@@ -1,0 +1,57 @@
+module ChangingStates where
+
+type ChangingStatesId = ContractId ChangingStates
+type ChangingStatesAppId = ContractId ChangingStatesApp
+
+data ChangingStatesStateType 
+  = State1 
+  | State2
+  | State3
+  | State4
+    deriving (Eq, Show)
+
+template ChangingStates
+  with 
+    changer : Party
+    stateBeenOn : [ChangingStatesStateType]
+    state     : ChangingStatesStateType
+  where
+    signatory changer 
+    let
+      checkIfItPassedAllStates (cont : ChangingStatesId) : Update Bool = do
+        contdata <- fetch cont
+        -- condition to be fixed, enum to list  
+        return (contdata.state == State4)
+    choice ChangeToState2 : ChangingStatesId
+      controller changer
+      do
+          assertMsg "Invalid state of contract." ((getField @"state" this) == State1)
+          
+          create this with
+              stateBeenOn = State2::this.stateBeenOn
+    choice ChangeToState3 : ()
+      controller changer
+      do 
+          assertMsg "Invalid state of contract." ((getField @"state" this) == State1)
+          newC <- create this with stateBeenOn = State3::this.stateBeenOn
+          archive newC
+    choice ChangeToState4 : Bool 
+      controller changer
+      do 
+          assertMsg "Invalid state of contract." ((getField @"state" this) == State2)
+          newC <- create this with stateBeenOn = State4::this.stateBeenOn
+          checkIfItPassedAllStates (newC)
+    
+template ChangingStatesApp
+  with 
+    changer : Party
+  where
+    signatory changer 
+    choice Build : ChangingStatesId
+      controller changer
+      do
+        create ChangingStates 
+          with
+            changer = this.changer
+            stateBeenOn = [State1]
+            state = State1
