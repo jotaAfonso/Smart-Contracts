@@ -75,8 +75,7 @@ template Bazaar
           seller = AccountInfo this.seller.account (this.seller.balance + this.item.price)
           buyer = AccountInfo this.buyer.account (this.buyer.balance - this.item.price)
           state = CurrentSaleFinalized
-
-        
+    
 
 template BazaarApp
   with 

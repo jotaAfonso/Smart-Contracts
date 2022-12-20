@@ -1,0 +1,32 @@
+module Main where
+
+import Marketplace
+import Daml.Script
+
+setup : Script SimpleMarketplaceId
+setup = script do    
+-- user_setup_begin
+  alice <- allocateParty "Alice"
+  bob <- allocateParty "Bob" 
+
+  test <- submit alice do
+      createCmd SimpleMarketplaceApp with
+        owner = alice
+        description = "test"
+        askingPrice     = 5
+        buyer = bob
+
+  test <- submit alice do
+    exerciseCmd test Build
+
+  test <- submit bob do
+    exerciseCmd test MakeOffer with offer = 6
+
+  test <- submit alice do
+    exerciseCmd test RejectOffer
+
+  test <- submit bob do
+    exerciseCmd test MakeOffer with offer = 6
+
+  submit alice do
+    exerciseCmd test AcceptOffer

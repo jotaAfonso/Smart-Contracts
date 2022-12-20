@@ -6,6 +6,9 @@ name: Marketplace
 source: daml
 init-script: Main:setup
 version: 0.0.1
+parties:
+  - Alice
+  - Bob
 dependencies:
   - daml-prim
   - daml-stdlib

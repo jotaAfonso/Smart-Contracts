@@ -1,0 +1,32 @@
+module Main where
+
+import Daml.Script
+import Auction
+
+setup : Script AuctionId
+setup = script do    
+  alice <- allocateParty "Alice" 
+  bob <- allocateParty"Bob" 
+
+  test <- submit alice do
+    createCmd AuctionApp with
+      beneficiary = alice
+      currentBidder = bob
+
+  test <- submit alice do
+    exerciseCmd test Build
+
+  test <- submit bob do
+    exerciseCmd test Bid with biddingAmount = 10
+  
+  test <- submit bob do
+    exerciseCmd test Withdraw
+    
+  test <- submit bob do
+    exerciseCmd test Bid with biddingAmount = 20
+  
+  test <- submit alice do
+    exerciseCmd test EndAuction
+
+  submit bob do
+    exerciseCmd test Withdraw

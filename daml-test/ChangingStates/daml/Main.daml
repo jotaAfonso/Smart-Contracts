@@ -1,44 +1,22 @@
 module Main where
 
 import Daml.Script
+import ChangingStates
 
-type AssetId = ContractId Asset
+setup : Script ()
+setup = script do    
+  alice <- allocateParty "Alice" 
+  
+  test <- submit alice do
+    createCmd ChangingStatesApp with
+      changer = alice
+      
+  test <- submit alice do
+    exerciseCmd test Build
 
-template Asset
-  with
-    issuer : Party
-    owner  : Party
-    name   : Text
-  where
-    ensure name /= ""
-    signatory issuer
-    observer owner
-    choice Give : AssetId
-      with
-        newOwner : Party
-      controller owner
-      do create this with
-           owner = newOwner
-
-setup : Script AssetId
-setup = script do
--- user_setup_begin
-  alice <- allocatePartyWithHint "Alice" (PartyIdHint "Alice")
-  bob <- allocatePartyWithHint "Bob" (PartyIdHint "Bob")
-  aliceId <- validateUserId "alice"
-  bobId <- validateUserId "bob"
-  createUser (User aliceId (Some alice)) [CanActAs alice]
-  createUser (User bobId (Some bob)) [CanActAs bob]
--- user_setup_end
-
-  aliceTV <- submit alice do
-    createCmd Asset with
-      issuer = alice
-      owner = alice
-      name = "TV"
-
-  bobTV <- submit alice do
-    exerciseCmd aliceTV Give with newOwner = bob
-
-  submit bob do
-    exerciseCmd bobTV Give with newOwner = alice
+  test <- submit alice do
+    exerciseCmd test ChangeToState2
+    
+  submit alice do
+    exerciseCmd test ChangeToState4
+    

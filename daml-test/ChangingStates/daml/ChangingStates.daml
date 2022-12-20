@@ -3,7 +3,7 @@ module ChangingStates where
 type ChangingStatesId = ContractId ChangingStates
 type ChangingStatesAppId = ContractId ChangingStatesApp
 
-data ChangingStatesStateType 
+data ChangingStateType 
   = State1 
   | State2
   | State3
@@ -13,32 +13,32 @@ data ChangingStatesStateType
 template ChangingStates
   with 
     changer : Party
-    stateBeenOn : [ChangingStatesStateType]
-    state     : ChangingStatesStateType
+    stateBeenOn : [ChangingStateType]
+    state     : ChangingStateType
   where
     signatory changer 
     let
       checkIfItPassedAllStates (cont : ChangingStatesId) : Update Bool = do
         contdata <- fetch cont
         -- condition to be fixed, enum to list  
-        return (contdata.state == State4)
+        
+        return (length  contdata.stateBeenOn == 4)
     choice ChangeToState2 : ChangingStatesId
       controller changer
       do
-          assertMsg "Invalid state of contract." ((getField @"state" this) == State1)
-          
+          -- assertMsg "Invalid state of contract." ((getField @"state" this) == State1)
           create this with
               stateBeenOn = State2::this.stateBeenOn
     choice ChangeToState3 : ()
       controller changer
       do 
-          assertMsg "Invalid state of contract." ((getField @"state" this) == State1)
+          -- assertMsg "Invalid state of contract." ((getField @"state" this) == State1)
           newC <- create this with stateBeenOn = State3::this.stateBeenOn
           archive newC
     choice ChangeToState4 : Bool 
       controller changer
       do 
-          assertMsg "Invalid state of contract." ((getField @"state" this) == State2)
+          --assertMsg "Invalid state of contract." ((getField @"state" this) == State2)
           newC <- create this with stateBeenOn = State4::this.stateBeenOn
           checkIfItPassedAllStates (newC)
     
@@ -55,3 +55,5 @@ template ChangingStatesApp
             changer = this.changer
             stateBeenOn = [State1]
             state = State1
+
+

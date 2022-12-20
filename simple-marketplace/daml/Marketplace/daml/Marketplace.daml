@@ -1,7 +1,5 @@
 module Marketplace where
 
-import Daml.Script
-
 type SimpleMarketplaceId = ContractId SimpleMarketplace
 
 data MarketStateType 
@@ -69,41 +67,3 @@ template SimpleMarketplaceApp
             state = ItemAvailable
             buyer = this.buyer
             offerPrice = 0
-
-setup : Script SimpleMarketplaceId
-setup = script do    
--- user_setup_begin
-  alice <- allocatePartyWithHint "Alice" (PartyIdHint "Alice")
-  bob <- allocatePartyWithHint "Bob" (PartyIdHint "Bob")
-  aliceId <- validateUserId "alice"
-  bobId <- validateUserId "bob"
-  createUser (User aliceId (Some alice)) [CanActAs alice]
-  createUser (User bobId (Some bob)) [CanActAs bob]
--- user_setup_end
-
-  test <- submit alice do
-      createCmd SimpleMarketplaceApp with
-        owner = alice
-        description = "test"
-        askingPrice     = 5
-        buyer = bob
-
-  test <- submit alice do
-    exerciseCmd test Build
-
-  {-
-  submit alice do
-    exerciseCmd test AcceptOffer
-  -}
-
-  test <- submit bob do
-    exerciseCmd test MakeOffer with offer = 6
-
-  test <- submit alice do
-    exerciseCmd test RejectOffer
-
-  test <- submit bob do
-    exerciseCmd test MakeOffer with offer = 6
-
-  submit alice do
-    exerciseCmd test AcceptOffer

@@ -1,7 +1,5 @@
 module Hello where
 
-import Daml.Script
-
 type HelloBlockChainId = ContractId HelloBlockChain
 
 data HelloStateType 
@@ -55,28 +53,3 @@ template HelloBlockChainApp
             responder = this.responder
             state = Request
             msg = this.msg
-
-setup : Script HelloBlockChainId
-setup = script do    
--- user_setup_begin
-  alice <- allocatePartyWithHint "Alice" (PartyIdHint "Alice")
-  bob <- allocatePartyWithHint "Bob" (PartyIdHint "Bob")
-  aliceId <- validateUserId "alice"
-  bobId <- validateUserId "bob"
-  createUser (User aliceId (Some alice)) [CanActAs alice]
-  createUser (User bobId (Some bob)) [CanActAs bob]
--- user_setup_end
-  helloB <- submit alice do
-      createCmd HelloBlockChainApp with
-        requestor = alice
-        responder = bob
-        msg       = "Test"
-
-  helloB <- submit alice do
-    exerciseCmd helloB Build
-
-  helloB <- submit bob do
-    exerciseCmd helloB SendResponse with newmsg = "Test response"
-
-  submit alice do
-    exerciseCmd helloB SendRequest with newmsg = "Test request"
